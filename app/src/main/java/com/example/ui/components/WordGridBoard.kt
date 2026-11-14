@@ -1,0 +1,421 @@
+package com.example.ui.components
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.model.FoundWordEntry
+import com.example.model.GridCoord
+import com.example.model.PuzzleBoard
+import com.example.ui.theme.HintYellow
+import com.example.ui.theme.HintYellowBorder
+import com.example.ui.theme.MainText
+import com.example.ui.theme.NunitoFontFamily
+import com.example.ui.theme.PrimaryBlue
+import com.example.ui.theme.SurfaceWhite
+import com.example.ui.theme.WarningRed
+import com.example.ui.theme.WarningRedSoft
+import com.example.ui.theme.WordHighlightColors
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.hypot
+import kotlin.math.roundToInt
+
+@Composable
+fun WordGridBoard(
+    board: PuzzleBoard,
+    foundWords: List<FoundWordEntry>,
+    hintedCells: Set<GridCoord>,
+    hintPulseStep: Int,
+    wrongSelectionCells: Set<GridCoord>,
+    isRoundFinished: Boolean,
+    onSelectionChanged: (List<GridCoord>, String) -> Unit,
+    onSelectionFinished: (List<GridCoord>) -> Unit,
+    onSelectionActiveChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+
+    var activeSelection by remember(board) { mutableStateOf<List<GridCoord>>(emptyList()) }
+
+    val foundCellColorMap = remember(foundWords) {
+        buildMap {
+            for (entry in foundWords) {
+                for (coord in entry.cells) {
+                    put(coord, entry.colorIndex)
+                }
+            }
+        }
+    }
+
+    val activeSelectionSet = remember(activeSelection) { activeSelection.toSet() }
+
+    fun wordFor(coords: List<GridCoord>): String = buildString(coords.size) {
+        for (c in coords) {
+            append(board.grid[c.row][c.col])
+        }
+    }
+
+    // Layered tactile game frame around the centered 8x8 square
+    Surface(
+        modifier = modifier
+            .aspectRatio(1f)
+            .testTag("word_grid_board"),
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xFFE3ECFC),
+        shadowElevation = 10.dp,
+        border = BorderStroke(
+            width = 2.dp,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    PrimaryBlue.copy(alpha = 0.55f),
+                    Color(0xFF6366F1).copy(alpha = 0.45f),
+                    Color(0xFFEC4899).copy(alpha = 0.35f),
+                )
+            ),
+        ),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(5.dp),
+            shape = RoundedCornerShape(23.dp),
+            color = SurfaceWhite,
+            shadowElevation = 2.dp,
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+            ) {
+                val boardSizePx = with(density) { maxWidth.toPx() }
+                val gridSize = board.size
+                val cellSizePx = boardSizePx / gridSize.toFloat()
+                val letterFontSize = remember(maxWidth) {
+                    (maxWidth.value / 15.0f).coerceIn(14f, 27f).sp
+                }
+
+                // Subtle connector dots between adjacent active bubbles to keep the path
+                // visually connected without drawing a thick straight line through letters.
+                if (activeSelection.size >= 2) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        for (i in 0 until activeSelection.size - 1) {
+                            val a = activeSelection[i]
+                            val b = activeSelection[i + 1]
+                            val ax = (a.col + 0.5f) * cellSizePx
+                            val ay = (a.row + 0.5f) * cellSizePx
+                            val bx = (b.col + 0.5f) * cellSizePx
+                            val by = (b.row + 0.5f) * cellSizePx
+                            val mid = Offset((ax + bx) / 2f, (ay + by) / 2f)
+                            drawCircle(
+                                color = PrimaryBlue.copy(alpha = 0.48f),
+                                radius = cellSizePx * 0.12f,
+                                center = mid,
+                            )
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(board, isRoundFinished) {
+                            if (isRoundFinished) return@pointerInput
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                down.consume()
+                                onSelectionActiveChanged(true)
+
+                                val startCol = (down.position.x / cellSizePx).toInt().coerceIn(0, gridSize - 1)
+                                val startRow = (down.position.y / cellSizePx).toInt().coerceIn(0, gridSize - 1)
+                                val startCell = GridCoord(startRow, startCol)
+                                var currentSelection = listOf(startCell)
+                                activeSelection = currentSelection
+                                onSelectionChanged(currentSelection, wordFor(currentSelection))
+
+                                val startCenterX = (startCol + 0.5f) * cellSizePx
+                                val startCenterY = (startRow + 0.5f) * cellSizePx
+
+                                var pointerDown = true
+                                while (pointerDown) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: event.changes.firstOrNull()
+                                    if (change == null || !change.pressed) {
+                                        pointerDown = false
+                                        change?.consume()
+                                        break
+                                    }
+                                    change.consume()
+                                    val next = computeRaySelection(
+                                        start = startCell,
+                                        startCenterX = startCenterX,
+                                        startCenterY = startCenterY,
+                                        pointerX = change.position.x,
+                                        pointerY = change.position.y,
+                                        cellSizePx = cellSizePx,
+                                        gridSize = gridSize,
+                                    )
+                                    if (next != currentSelection) {
+                                        currentSelection = next
+                                        activeSelection = next
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onSelectionChanged(next, wordFor(next))
+                                    }
+                                }
+
+                                val finalSelection = currentSelection
+                                activeSelection = emptyList()
+                                onSelectionActiveChanged(false)
+                                onSelectionFinished(finalSelection)
+                            }
+                        },
+                ) {
+                    for (row in 0 until gridSize) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                        ) {
+                            for (col in 0 until gridSize) {
+                                val coord = GridCoord(row, col)
+                                val letter = board.grid[row][col]
+                                val isSelected = coord in activeSelectionSet
+                                val foundColorIndex = foundCellColorMap[coord]
+                                val isHinted = coord in hintedCells
+                                val isWrong = coord in wrongSelectionCells
+
+                                BubbleLetterCell(
+                                    letter = letter,
+                                    isSelected = isSelected,
+                                    foundColorIndex = foundColorIndex,
+                                    isHinted = isHinted,
+                                    hintPulseOn = isHinted && (hintPulseStep % 2 == 1),
+                                    isWrong = isWrong,
+                                    fontSize = letterFontSize,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxSize()
+                                        .padding(2.5.dp)
+                                        .testTag("grid_cell_${row}_${col}"),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BubbleLetterCell(
+    letter: Char,
+    isSelected: Boolean,
+    foundColorIndex: Int?,
+    isHinted: Boolean,
+    hintPulseOn: Boolean,
+    isWrong: Boolean,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    val highlightColor = foundColorIndex?.let {
+        WordHighlightColors[it % WordHighlightColors.size]
+    }
+
+    val targetBgColor = when {
+        isSelected -> PrimaryBlue
+        isWrong -> WarningRedSoft
+        isHinted && hintPulseOn -> HintYellow.copy(alpha = 0.88f)
+        isHinted -> HintYellow.copy(alpha = 0.35f)
+        highlightColor != null -> highlightColor.copy(alpha = 0.35f)
+        else -> Color(0xFFF3F6FC)
+    }
+
+    val targetBorderColor = when {
+        isSelected -> Color(0xFF1D4ED8)
+        isWrong -> WarningRed
+        isHinted -> HintYellowBorder
+        highlightColor != null -> highlightColor.copy(alpha = 0.78f)
+        else -> Color(0xFFE3E8F4)
+    }
+
+    val targetTextColor = when {
+        isSelected -> Color.White
+        isWrong -> WarningRed
+        else -> MainText
+    }
+
+    val targetScale = when {
+        isSelected -> 1.12f
+        isHinted && hintPulseOn -> 1.12f
+        isWrong -> 0.93f
+        else -> 1.0f
+    }
+
+    val animatedBg by animateColorAsState(
+        targetValue = targetBgColor,
+        animationSpec = tween(durationMillis = 150),
+        label = "bubble_bg",
+    )
+    val animatedBorder by animateColorAsState(
+        targetValue = targetBorderColor,
+        animationSpec = tween(durationMillis = 150),
+        label = "bubble_border",
+    )
+    val animatedText by animateColorAsState(
+        targetValue = targetTextColor,
+        animationSpec = tween(durationMillis = 140),
+        label = "bubble_text",
+    )
+    val animatedScale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "bubble_scale",
+    )
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = animatedScale
+                scaleY = animatedScale
+            }
+            .then(
+                if (isSelected) {
+                    Modifier.shadow(elevation = 7.dp, shape = CircleShape, clip = false)
+                } else {
+                    Modifier
+                }
+            )
+            .clip(CircleShape)
+            .then(
+                if (isSelected) {
+                    Modifier.background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFF4BA0FF), PrimaryBlue)
+                        )
+                    )
+                } else {
+                    Modifier.background(animatedBg)
+                }
+            )
+            .border(
+                width = if (isSelected || highlightColor != null || isHinted || isWrong) 1.75.dp else 1.dp,
+                color = animatedBorder,
+                shape = CircleShape,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = letter.toString(),
+            fontFamily = NunitoFontFamily,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = fontSize,
+            color = animatedText,
+        )
+    }
+}
+
+private fun computeRaySelection(
+    start: GridCoord,
+    startCenterX: Float,
+    startCenterY: Float,
+    pointerX: Float,
+    pointerY: Float,
+    cellSizePx: Float,
+    gridSize: Int,
+): List<GridCoord> {
+    val dx = pointerX - startCenterX
+    val dy = pointerY - startCenterY
+    val dist = hypot(dx, dy)
+    if (dist < cellSizePx * 0.42f) {
+        return listOf(start)
+    }
+
+    val angle = atan2(dy.toDouble(), dx.toDouble())
+    val octant = (angle / (PI / 4.0)).roundToInt()
+
+    val (stepR, stepC) = when (octant) {
+        0 -> 0 to 1
+        1 -> 1 to 1
+        2 -> 1 to 0
+        3 -> 1 to -1
+        4, -4 -> 0 to -1
+        -3 -> -1 to -1
+        -2 -> -1 to 0
+        -1 -> -1 to 1
+        else -> 0 to 1
+    }
+
+    val isDiagonal = stepR != 0 && stepC != 0
+    val unitLen = if (isDiagonal) cellSizePx * 1.4142135f else cellSizePx
+    val rayLen = hypot(stepC.toFloat(), stepR.toFloat())
+    val ux = stepC / rayLen
+    val uy = stepR / rayLen
+
+    val projection = (dx * ux + dy * uy).coerceAtLeast(0f)
+    val rawSteps = (projection / unitLen).roundToInt()
+
+    val maxRowSteps = when {
+        stepR > 0 -> (gridSize - 1) - start.row
+        stepR < 0 -> start.row
+        else -> gridSize - 1
+    }
+    val maxColSteps = when {
+        stepC > 0 -> (gridSize - 1) - start.col
+        stepC < 0 -> start.col
+        else -> gridSize - 1
+    }
+    val clampedSteps = rawSteps.coerceIn(0, minOf(maxRowSteps, maxColSteps))
+
+    return List(clampedSteps + 1) { step ->
+        GridCoord(
+            row = start.row + stepR * step,
+            col = start.col + stepC * step,
+        )
+    }
+}

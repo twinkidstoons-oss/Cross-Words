@@ -1,0 +1,6 @@
+{
+  "name": "Wordly Puzzle",
+  "description": "An 8x8 word-search puzzle game with 25 categories, Classic and Time modes, bubble-style selection, bonus words, hints, and offline progression.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

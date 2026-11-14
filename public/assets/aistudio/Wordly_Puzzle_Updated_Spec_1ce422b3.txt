@@ -1,0 +1,227 @@
+WORDLY PUZZLE — MOBILE WORD-SEARCH GAME
+App Build Specification / Development Prompt
+Version: 1.1.0
+
+1. APP IDENTITY
+App name: Wordly Puzzle
+Requested package name / slug: trynowgamestation
+Android applicationId and namespace: com.trynowgamestation
+Version: 1.1.0
+
+Android package identifiers conventionally require multiple dot-separated segments. Therefore use
+com.trynowgamestation as the build-compatible applicationId/namespace, while retaining
+trynowgamestation as the requested package slug/brand identifier.
+
+2. ADMOB TEST ADS
+Integrate Google Mobile Ads using Google's official Android TEST IDs only during development.
+
+Android AdMob App ID (TEST):
+ca-app-pub-3940256099942544~3347511713
+
+Interstitial Ad Unit ID (TEST):
+ca-app-pub-3940256099942544/1033173712
+
+Rewarded Ad Unit ID (TEST):
+ca-app-pub-3940256099942544/5224354917
+
+Add the test App ID to AndroidManifest.xml:
+<meta-data
+    android:name="com.google.android.gms.ads.APPLICATION_ID"
+    android:value="ca-app-pub-3940256099942544~3347511713" />
+
+IMPORTANT:
+- These are Google's test IDs. Never publish a production release using test IDs.
+- Before release, replace all three IDs with the app owner's real AdMob IDs.
+- Keep ads in test mode during development and testing.
+- Interstitial ads: show on eligible transitions, at most every second eligible trigger,
+  with a minimum 60-second interval. Never interrupt an active word selection.
+- Rewarded ads: offer an optional rewarded ad for extra hints. Grant the reward only
+  after the SDK confirms that the reward was earned.
+- Handle ad load failures gracefully; the game must remain playable without ads.
+
+3. GAME OVERVIEW
+Build a polished Android-first word-search puzzle game using React Native and Expo.
+Players choose a category and find hidden words in an 8×8 letter grid. The player
+selects words by dragging across connected letters. Include Classic and Time modes,
+hints, bonus words, score, coins, level progression, sound effects, and AdMob test ads.
+Core gameplay must work offline; ads may require an internet connection.
+
+4. CATEGORIES — 25 TOTAL
+Create exactly these 25 categories in this order. Use short words only. Every puzzle
+word must be 3–8 letters long so it can fit inside the fixed 8×8 grid.
+
+1. Animals 🐾 — CAT, DOG, LION, BEAR, WOLF, FOX, ZEBRA, HORSE, MOUSE, TIGER
+2. Food 🍕 — PIZZA, BREAD, RICE, SOUP, TACO, PASTA, SALAD, CAKE, CHEESE, APPLE
+3. Sports ⚽ — GOLF, RUGBY, TENNIS, BOXING, SKIING, HOCKEY, SOCCER, JUDO, RACING, POLO
+4. Countries 🌍 — INDIA, JAPAN, CHINA, SPAIN, FRANCE, BRAZIL, CHILE, EGYPT, KENYA, NEPAL
+5. Colors 🎨 — RED, BLUE, GREEN, PINK, BLACK, WHITE, BROWN, GOLD, GRAY, ORANGE
+6. Fruits 🍎 — APPLE, MANGO, GRAPE, LEMON, PEACH, PLUM, KIWI, PEAR, GUAVA, MELON
+7. Space 🚀 — MOON, STAR, SUN, MARS, EARTH, COMET, ORBIT, VENUS, NOVA, SOLAR
+8. Ocean Life 🌊 — SHARK, WHALE, CRAB, CORAL, SQUID, SEAL, OTTER, TUNA, CLAM, EEL
+9. Music 🎵 — PIANO, DRUMS, GUITAR, FLUTE, BASS, JAZZ, ROCK, OPERA, CHORD, TEMPO
+10. Movies 🎬 — ACTOR, SCENE, DRAMA, COMEDY, ACTION, HORROR, FILM, STAR, CAST, PLOT
+11. Nature 🌿 — RIVER, FOREST, OCEAN, DESERT, JUNGLE, VALLEY, ISLAND, MARSH, PLANT, STONE
+12. Technology 💻 — PHONE, ROBOT, TABLET, SCREEN, MOUSE, CHIP, LASER, MODEM, PIXEL, CODE
+13. Jobs 👔 — DOCTOR, TEACHER, PILOT, CHEF, NURSE, FARMER, ACTOR, WRITER, JUDGE, ARTIST
+14. Clothing 👗 — SHIRT, PANTS, DRESS, SHOES, SOCKS, HAT, SCARF, COAT, SKIRT, BOOTS
+15. Vegetables 🥕 — CARROT, POTATO, TOMATO, ONION, GARLIC, CORN, BEANS, PEAS, CHILLI, RADISH
+16. Transport 🚗 — TRAIN, PLANE, TRUCK, CYCLE, SCOOTER, BOAT, SHIP, TAXI, BUS, METRO
+17. Weather ⛅ — CLOUD, RAIN, STORM, WIND, FOG, SNOW, SUNNY, FROST, THUNDER, BREEZE
+18. School 📚 — BOOK, PENCIL, PAPER, CLASS, DESK, RULER, ERASER, BOARD, EXAM, TEACHER
+19. Home 🏠 — TABLE, CHAIR, SOFA, BED, LAMP, DOOR, WINDOW, CLOCK, SHELF, PLATE
+20. Insects 🦋 — ANT, BEE, FLY, MOTH, WASP, BEETLE, CRICKET, MANTIS, TERMITE, SPIDER
+21. Body Parts 🧠 — ARM, LEG, HAND, FOOT, HEAD, EYES, NOSE, HEART, BRAIN, TEETH
+22. Emotions 🙂 — HAPPY, JOY, ANGRY, CALM, PROUD, SHY, BRAVE, PEACE, WORRY, EXCITED
+23. Sea & Beach 🏖️ — SAND, WAVE, SHELL, BEACH, TIDE, COAST, DUNE, SURF, SHORE, PEARL
+24. Gadgets 🔌 — PHONE, WATCH, RADIO, CAMERA, SPEAKER, DRONE, LAPTOP, MOUSE, ROUTER, CABLE
+25. Flowers 🌸 — ROSE, LILY, TULIP, DAISY, LOTUS, JASMINE, POPPY, IRIS, ORCHID, VIOLET
+
+Category content rules:
+- Keep every word between 3 and 8 letters inclusive.
+- Validate the list automatically before building a puzzle.
+- Remove or replace any word longer than 8 letters; never enlarge the grid.
+- Avoid duplicate words within the same category.
+- Each level should randomly choose a manageable subset of 8–10 words from its category.
+- If a category has fewer than the required number of valid words, use all available words.
+
+5. FIXED GRID RULES — ALWAYS 8×8
+- Every game, category, mode, and level must use exactly 8 rows × 8 columns.
+- Do not use 10×10, 12×12, adaptive grids, scrolling grids, or oversized cells.
+- The grid must remain fully visible and usable on common Android phone screens.
+- Only place words of 3–8 letters. Never allow a word to extend outside the grid.
+- Place words horizontally, vertically, and diagonally in either direction, where possible.
+- Check every candidate placement is within bounds and does not create invalid coordinates.
+- If a word cannot be placed after a reasonable number of attempts, skip it and choose
+  another valid short word. Do not clip, wrap, or partially display a word.
+- Fill all remaining cells with random uppercase letters.
+- Keep cell dimensions responsive while preserving the 8×8 layout.
+
+6. WORD SELECTION — BUBBLE-STYLE ONLY
+Replace the standard flat/line selection appearance with a rounded bubble selection style.
+- As the player drags across connected letters, show each selected letter inside a
+  circular or pill-shaped bubble.
+- Selected bubbles should have a clear, attractive fill, subtle shadow, and smooth animation.
+- Keep the selected path visually connected and easy to follow.
+- On a correct word, animate the selected bubbles into the word's assigned highlight color.
+- On an incorrect selection, briefly show a gentle neutral/red feedback state, then reset.
+- Do not draw a thick straight line through letters as the primary selection indicator.
+- Support all eight straight-line directions and touch input through the full cell area.
+- Ensure selection works smoothly on small screens and does not block scrolling outside
+  the grid.
+
+7. GAME MODES
+Classic Mode:
+- No time limit.
+- Timer counts upward from 00:00.
+
+Time Mode:
+- Two-minute countdown starting at 02:00.
+- Timer counts down.
+- When fewer than 30 seconds remain, change the timer pill to a clear warning/red style.
+- When time reaches zero, end the round and show the results screen.
+
+8. SCORING
+- Correct puzzle word: +10 points.
+- Valid bonus word: +5 points.
+- Time Mode completion bonus: remaining seconds × 2.
+- Prevent the same puzzle word or bonus word from being scored more than once.
+
+9. BONUS WORDS
+Include a curated offline dictionary of at least 600 common English words, primarily
+3–4 letters long, stored in a Set for efficient lookup.
+A selected word qualifies as a bonus word only if it:
+- contains at least 3 letters;
+- exists in the curated dictionary; and
+- is not one of the current puzzle's target words.
+Award +5 points once per unique bonus word per puzzle.
+Do not require an online dictionary or network request.
+
+10. HINT SYSTEM
+- Give each puzzle 3 free hints.
+- Tapping Hint selects a random unfound target word.
+- Briefly highlight that word's cells with a yellow bubble animation: 3 pulses over
+  approximately 1.5 seconds.
+- Show the remaining hint count on the lightbulb button.
+- Disable the free hint button when no hints remain.
+- Optionally offer a rewarded ad for an extra hint; grant it only after confirmed reward.
+
+11. COINS AND LEVEL PROGRESSION
+- Starting balance: 300 coins.
+- Award 50 coins when a level is completed.
+- Persist the coin balance using AsyncStorage.
+- Category 1 / first level is unlocked by default.
+- Unlock the next category after completing the preceding category/level.
+- Persist completed level/category IDs using AsyncStorage.
+- Prevent duplicate coin awards if the results screen is reopened.
+
+12. WORD HIGHLIGHT COLORS
+Use a cycle of 18 distinct accessible colors for completed words:
+Red, Blue, Green, Yellow, Pink, Orange, Purple, Teal, Rose, Cyan, Lime, Violet,
+Amber, Emerald, Fuchsia, Sky, Light Green, and Light Orange.
+Use approximately 35% opacity for completed-cell backgrounds. Maintain readable letters
+and enough contrast in both selected and completed states.
+
+13. VISUAL THEME
+Use a clean, cheerful, modern light theme:
+- Background: #f0f0f3
+- Primary blue: #2f80ed
+- Orange accent: #ff8c1a
+- Pink accent: #f83f8f
+- Main text: #1a1a1a
+- Found-word text: #c0c0c8
+Use rounded cards, clear typography, accessible touch targets, and consistent spacing.
+
+14. SOUND EFFECTS
+Use small royalty-free sound assets (total size under 500 KB if practical):
+- Button tap: soft tap
+- Correct word: bright chime
+- Wrong selection: gentle buzz
+- Level complete: short victory fanfare
+- Countdown under 30 seconds: subtle tick
+- Drag/swipe: light swoosh
+- Bonus word: coin sparkle
+- Time over: short descending tone
+Provide a mute toggle and avoid playing overlapping sounds excessively.
+
+15. SCREENS AND NAVIGATION
+Create these five screens:
+1. Home — Wordly Puzzle title/logo, Play button, and coin balance.
+2. Category Select — scrollable list/grid of 25 category cards with emoji, name,
+   and locked/unlocked state.
+3. Mode Select — Classic Mode and Time Mode.
+4. Game — fixed 8×8 letter grid, bubble-style drag selection, target word list,
+   found-word styling, score, timer, hint control, and coin balance.
+5. Results — score, words found, coins earned, elapsed/remaining time, and
+   Play Again / Next Level / Home actions.
+
+16. TECHNICAL REQUIREMENTS
+- Framework: React Native with Expo (latest stable SDK compatible with dependencies).
+- Gesture handling: react-native-gesture-handler.
+- Ads: react-native-google-mobile-ads.
+- Persistence: @react-native-async-storage/async-storage.
+- Navigation: expo-router.
+- Sound: use a currently supported Expo audio package; keep sound effects local/offline.
+- Android-first. iOS support is optional.
+- Use TypeScript and reusable components where practical.
+- Keep all core puzzle logic client-side and playable offline.
+- No authentication, leaderboard, cloud sync, or mandatory backend.
+- If a backend is retained, limit it to an optional health-check endpoint:
+  GET /health → { "status": "ok" }.
+- All user-facing text must be in English.
+
+17. QUALITY CHECKS / ACCEPTANCE CRITERIA
+Before delivery, verify:
+- App title displays exactly “Wordly Puzzle”.
+- Android applicationId/namespace is com.trynowgamestation; requested slug is
+  trynowgamestation.
+- All 25 categories appear in the specified order.
+- Every category uses only valid 3–8 letter puzzle words.
+- Grid is exactly 8×8 on every screen and every level.
+- No word is clipped or placed outside the grid.
+- Bubble-style selection is used; no straight-line overlay is the primary selection UI.
+- All eight word directions work.
+- Classic and Time modes work correctly.
+- Hints, bonus words, scoring, coins, and progression work offline.
+- Google test ads load using the official test IDs; gameplay remains usable if ads fail.
+- No production AdMob IDs are hard-coded.
+- App handles screen-size differences and Android back navigation gracefully.

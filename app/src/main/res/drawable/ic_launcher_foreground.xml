@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Subtle shadow under tile -->
+    <path
+        android:fillColor="#2A0B2E66"
+        android:pathData="M34,29 L74,29 Q82,29 82,37 L82,77 Q82,85 74,85 L34,85 Q26,85 26,77 L26,37 Q26,29 34,29 Z" />
+    <!-- Rounded white puzzle tile inside 66dp safe zone -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M34,27 L74,27 Q81,27 81,34 L81,74 Q81,81 74,81 L34,81 Q27,81 27,74 L27,34 Q27,27 34,27 Z" />
+    <!-- Bold W letterform -->
+    <path
+        android:fillColor="#FF2F80ED"
+        android:pathData="M35.5,41 L41.5,41 L46.5,60.5 L51.5,43 L56.5,43 L61.5,60.5 L66.5,41 L72.5,41 L64.8,68 L58.8,68 L54,51 L49.2,68 L43.2,68 Z" />
+    <!-- Cheerful orange bubble accent dot -->
+    <path
+        android:fillColor="#FFFF8C1A"
+        android:pathData="M75,33 m-6.5,0 a6.5,6.5 0 1,0 13,0 a6.5,6.5 0 1,0 -13,0" />
+    <!-- Pink mini highlight dot -->
+    <path
+        android:fillColor="#FFF83F8F"
+        android:pathData="M35,73 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+</vector>
