@@ -4,7 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -14,11 +20,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ads.AdManager
-import com.example.model.GameMode
 import com.example.ui.screens.CategorySelectScreen
 import com.example.ui.screens.GameScreen
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.ModeSelectScreen
 import com.example.ui.screens.ResultsScreen
 import com.example.ui.theme.WordlyPuzzleTheme
 import com.example.viewmodel.WordlyViewModel
@@ -26,12 +30,10 @@ import com.example.viewmodel.WordlyViewModel
 object WordlyRoutes {
     const val HOME = "home"
     const val CATEGORY_SELECT = "category_select"
-    const val MODE_SELECT = "mode_select/{categoryId}"
-    const val GAME = "game/{categoryId}/{mode}"
+    const val GAME = "game/{categoryId}"
     const val RESULTS = "results"
 
-    fun modeSelect(categoryId: Int) = "mode_select/$categoryId"
-    fun game(categoryId: Int, mode: GameMode) = "game/$categoryId/${mode.routeValue}"
+    fun game(categoryId: Int) = "game/$categoryId"
 }
 
 class MainActivity : ComponentActivity() {
@@ -60,6 +62,30 @@ fun WordlyPuzzleApp(
     NavHost(
         navController = navController,
         startDestination = WordlyRoutes.HOME,
+        enterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth / 6 },
+                animationSpec = tween(260),
+            ) + fadeIn(animationSpec = tween(220))
+        },
+        exitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { fullWidth -> -fullWidth / 8 },
+                animationSpec = tween(220),
+            ) + fadeOut(animationSpec = tween(180))
+        },
+        popEnterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { fullWidth -> -fullWidth / 6 },
+                animationSpec = tween(260),
+            ) + fadeIn(animationSpec = tween(220))
+        },
+        popExitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth / 6 },
+                animationSpec = tween(220),
+            ) + fadeOut(animationSpec = tween(180))
+        },
     ) {
         composable(WordlyRoutes.HOME) {
             HomeScreen(
@@ -69,6 +95,7 @@ fun WordlyPuzzleApp(
                     navController.navigate(WordlyRoutes.CATEGORY_SELECT)
                 },
                 onToggleMute = { viewModel.toggleMute() },
+                onRewardedCoinsEarned = { viewModel.grantRewardedCoins() },
             )
         }
 
@@ -81,30 +108,10 @@ fun WordlyPuzzleApp(
                 },
                 onCategorySelected = { category ->
                     viewModel.playTapSound()
-                    navController.navigate(WordlyRoutes.modeSelect(category.id))
+                    viewModel.startNewGame(categoryId = category.id)
+                    navController.navigate(WordlyRoutes.game(category.id))
                 },
-            )
-        }
-
-        composable(
-            route = WordlyRoutes.MODE_SELECT,
-            arguments = listOf(
-                navArgument("categoryId") { type = NavType.IntType },
-            ),
-        ) { backStackEntry ->
-            val categoryId = backStackEntry.arguments?.getInt("categoryId") ?: 1
-            ModeSelectScreen(
-                categoryId = categoryId,
-                progress = progress,
-                onBack = {
-                    viewModel.playTapSound()
-                    navController.popBackStack()
-                },
-                onModeSelected = { mode ->
-                    viewModel.playTapSound()
-                    viewModel.startNewGame(categoryId = categoryId, mode = mode)
-                    navController.navigate(WordlyRoutes.game(categoryId, mode))
-                },
+                onRewardedCoinsEarned = { viewModel.grantRewardedCoins() },
             )
         }
 
@@ -112,9 +119,17 @@ fun WordlyPuzzleApp(
             route = WordlyRoutes.GAME,
             arguments = listOf(
                 navArgument("categoryId") { type = NavType.IntType },
-                navArgument("mode") { type = NavType.StringType },
             ),
-        ) {
+        ) { backStackEntry ->
+            val routeCategoryId = backStackEntry.arguments?.getInt("categoryId") ?: 1
+
+            LaunchedEffect(routeCategoryId) {
+                val current = gameState
+                if (current == null || (current.category.id != routeCategoryId && !current.isRoundFinished)) {
+                    viewModel.startNewGame(categoryId = routeCategoryId)
+                }
+            }
+
             GameScreen(
                 gameState = gameState,
                 progress = progress,
@@ -133,10 +148,13 @@ fun WordlyPuzzleApp(
                     viewModel.submitSelection(cells)
                 },
                 onUseHint = { viewModel.useHint() },
-                onRewardedHintEarned = { viewModel.grantRewardedHint() },
+                onUseHintWithCoins = { viewModel.useHintWithCoins() },
+                onRewardedHintEarned = { viewModel.grantAndUseRewardedHint() },
+                onRewardedCoinsEarned = { viewModel.grantRewardedCoins() },
                 onShowMessage = { msg -> viewModel.showTransientMessage(msg) },
                 onRoundFinishedNavigate = {
                     navController.navigate(WordlyRoutes.RESULTS) {
+                        launchSingleTop = true
                         popUpTo(WordlyRoutes.CATEGORY_SELECT) {
                             inclusive = false
                         }
@@ -149,24 +167,25 @@ fun WordlyPuzzleApp(
             ResultsScreen(
                 result = roundResult,
                 progress = progress,
-                onPlayAgain = { categoryId, mode ->
+                onPlayAgain = { categoryId ->
                     viewModel.playTapSound()
-                    viewModel.startNewGame(categoryId = categoryId, mode = mode)
-                    navController.navigate(WordlyRoutes.game(categoryId, mode)) {
-                        popUpTo(WordlyRoutes.RESULTS) { inclusive = true }
+                    viewModel.startNewGame(categoryId = categoryId)
+                    navController.navigate(WordlyRoutes.game(categoryId)) {
+                        popUpTo(WordlyRoutes.CATEGORY_SELECT) { inclusive = false }
                     }
                 },
-                onNextLevel = { nextCategoryId, mode ->
+                onNextLevel = { nextCategoryId ->
                     viewModel.playTapSound()
-                    viewModel.startNewGame(categoryId = nextCategoryId, mode = mode)
-                    navController.navigate(WordlyRoutes.game(nextCategoryId, mode)) {
-                        popUpTo(WordlyRoutes.RESULTS) { inclusive = true }
+                    viewModel.startNewGame(categoryId = nextCategoryId)
+                    navController.navigate(WordlyRoutes.game(nextCategoryId)) {
+                        popUpTo(WordlyRoutes.CATEGORY_SELECT) { inclusive = false }
                     }
                 },
                 onHome = {
                     viewModel.playTapSound()
                     navController.popBackStack(WordlyRoutes.HOME, inclusive = false)
                 },
+                onRewardedCoinsEarned = { viewModel.grantRewardedCoins() },
             )
         }
     }

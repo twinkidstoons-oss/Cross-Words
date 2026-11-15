@@ -1,15 +1,5 @@
 package com.example.model
 
-enum class GameMode(val routeValue: String, val displayName: String) {
-    CLASSIC("classic", "Classic Mode"),
-    TIME("time", "Time Mode");
-
-    companion object {
-        fun fromRoute(value: String?): GameMode =
-            entries.firstOrNull { it.routeValue == value } ?: CLASSIC
-    }
-}
-
 data class Category(
     val id: Int, // 1..25
     val name: String,
@@ -43,18 +33,15 @@ data class RoundResult(
     val categoryId: Int,
     val categoryName: String,
     val categoryEmoji: String,
-    val mode: GameMode,
     val completed: Boolean,
     val totalScore: Int,
     val wordPoints: Int,
     val bonusWordPoints: Int,
-    val timeBonusPoints: Int,
     val wordsFoundCount: Int,
     val totalWordsCount: Int,
     val bonusWordsCount: Int,
     val coinsEarned: Int,
     val elapsedSeconds: Int,
-    val remainingSeconds: Int,
     val hasNextLevel: Boolean,
 )
 
@@ -75,25 +62,22 @@ data class PlayerProgress(
 
 data class GameUiState(
     val category: Category,
-    val mode: GameMode,
     val board: PuzzleBoard,
     val foundWords: List<FoundWordEntry> = emptyList(),
     val bonusWordsFound: Set<String> = emptySet(),
     val score: Int = 0,
     val wordPoints: Int = 0,
     val bonusWordPoints: Int = 0,
-    val freeHintsRemaining: Int = 3,
+    val freeHintsRemaining: Int = MAX_FREE_HINTS,
     val hintedCells: Set<GridCoord> = emptySet(),
     val hintPulseStep: Int = 0,
     val wrongSelectionCells: Set<GridCoord> = emptySet(),
     val elapsedSeconds: Int = 0,
-    val remainingSeconds: Int = TIME_MODE_DURATION_SECONDS,
     val bonusToastText: String? = null,
     val infoMessage: String? = null,
     val isRoundFinished: Boolean = false,
 ) {
     companion object {
-        const val TIME_MODE_DURATION_SECONDS = 120
         const val MAX_FREE_HINTS = 3
         const val POINTS_PER_WORD = 10
         const val POINTS_PER_BONUS_WORD = 5
@@ -102,7 +86,4 @@ data class GameUiState(
 
     val foundWordNames: Set<String>
         get() = foundWords.map { it.word }.toSet()
-
-    val isWarningTimer: Boolean
-        get() = mode == GameMode.TIME && remainingSeconds < 30 && remainingSeconds > 0
 }

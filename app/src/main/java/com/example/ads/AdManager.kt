@@ -160,9 +160,36 @@ object AdManager {
     }
 
     /**
-     * Shows a rewarded ad for +1 hint. Grants reward ONLY inside [OnUserEarnedRewardListener].
+     * Shows a rewarded ad to earn bonus coins (+500). Grants reward ONLY inside [OnUserEarnedRewardListener].
+     */
+    fun showRewardedAdForCoins(
+        activity: Activity?,
+        onRewardEarned: () -> Unit,
+        onUnavailable: () -> Unit,
+    ) {
+        showRewardedAd(
+            activity = activity,
+            onRewardEarned = onRewardEarned,
+            onUnavailable = onUnavailable,
+        )
+    }
+
+    /**
+     * Shows a rewarded ad to earn a puzzle hint. Grants reward ONLY inside [OnUserEarnedRewardListener].
      */
     fun showRewardedAdForHint(
+        activity: Activity?,
+        onRewardEarned: () -> Unit,
+        onUnavailable: () -> Unit,
+    ) {
+        showRewardedAd(
+            activity = activity,
+            onRewardEarned = onRewardEarned,
+            onUnavailable = onUnavailable,
+        )
+    }
+
+    private fun showRewardedAd(
         activity: Activity?,
         onRewardEarned: () -> Unit,
         onUnavailable: () -> Unit,

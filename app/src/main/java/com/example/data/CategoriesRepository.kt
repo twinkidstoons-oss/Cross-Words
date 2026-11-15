@@ -8,7 +8,8 @@ object CategoriesRepository {
     const val MAX_WORD_LENGTH = 8
 
     val categories: List<Category> = listOf(
-        category(1, "Animals", "\uD83D\uDC3E", listOf("CAT", "DOG", "LION", "BEAR", "WOLF", "FOX", "ZEBRA", "HORSE", "MOUSE", "TIGER")),
+        // Category 1 Animals includes the exact 8 words shown in Image 1 (Level 1 Animals)
+        category(1, "Animals", "\uD83D\uDC3E", listOf("CAT", "DOG", "BIRD", "FISH", "LION", "TIGER", "ELEPHANT", "KANGAROO", "BEAR", "WOLF", "FOX", "ZEBRA")),
         category(2, "Food", "\uD83C\uDF55", listOf("PIZZA", "BREAD", "RICE", "SOUP", "TACO", "PASTA", "SALAD", "CAKE", "CHEESE", "APPLE")),
         category(3, "Sports", "\u26BD", listOf("GOLF", "RUGBY", "TENNIS", "BOXING", "SKIING", "HOCKEY", "SOCCER", "JUDO", "RACING", "POLO")),
         category(4, "Countries", "\uD83C\uDF0D", listOf("INDIA", "JAPAN", "CHINA", "SPAIN", "FRANCE", "BRAZIL", "CHILE", "EGYPT", "KENYA", "NEPAL")),

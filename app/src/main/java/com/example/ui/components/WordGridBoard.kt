@@ -52,9 +52,15 @@ import com.example.ui.theme.HintYellowBorder
 import com.example.ui.theme.MainText
 import com.example.ui.theme.NunitoFontFamily
 import com.example.ui.theme.PrimaryBlue
-import com.example.ui.theme.SurfaceWhite
+import com.example.ui.theme.SurfaceTileCreamBottom
+import com.example.ui.theme.SurfaceTileCreamTop
+import com.example.ui.theme.TileEdgeShadow
 import com.example.ui.theme.WarningRed
 import com.example.ui.theme.WarningRedSoft
+import com.example.ui.theme.WoodBorder
+import com.example.ui.theme.WoodDark
+import com.example.ui.theme.WoodLight
+import com.example.ui.theme.WoodMid
 import com.example.ui.theme.WordHighlightColors
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -69,6 +75,7 @@ fun WordGridBoard(
     hintPulseStep: Int,
     wrongSelectionCells: Set<GridCoord>,
     isRoundFinished: Boolean,
+    isVibrationEnabled: Boolean = true,
     onSelectionChanged: (List<GridCoord>, String) -> Unit,
     onSelectionFinished: (List<GridCoord>) -> Unit,
     onSelectionActiveChanged: (Boolean) -> Unit,
@@ -97,47 +104,54 @@ fun WordGridBoard(
         }
     }
 
-    // Layered tactile game frame around the centered 8x8 square
-    Surface(
+    // Soft pastel sky-blue & frosted-glass framed 8x8 puzzle board harmonizing with background
+    Box(
         modifier = modifier
             .aspectRatio(1f)
-            .testTag("word_grid_board"),
-        shape = RoundedCornerShape(28.dp),
-        color = Color(0xFFE3ECFC),
-        shadowElevation = 10.dp,
-        border = BorderStroke(
-            width = 2.dp,
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    PrimaryBlue.copy(alpha = 0.55f),
-                    Color(0xFF6366F1).copy(alpha = 0.45f),
-                    Color(0xFFEC4899).copy(alpha = 0.35f),
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = PrimaryBlue.copy(alpha = 0.22f),
+                spotColor = PrimaryBlue.copy(alpha = 0.24f),
+            )
+            .clip(RoundedCornerShape(26.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(WoodLight, WoodMid, WoodDark)
                 )
-            ),
-        ),
+            )
+            .border(
+                width = 1.6.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.92f),
+                        WoodBorder,
+                    )
+                ),
+                shape = RoundedCornerShape(26.dp),
+            )
+            .padding(6.dp)
+            .testTag("word_grid_board"),
     ) {
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(5.dp),
-            shape = RoundedCornerShape(23.dp),
-            color = SurfaceWhite,
-            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFFF3F8FF),
+            border = BorderStroke(1.dp, Color(0xFFD4E3FA)),
         ) {
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(8.dp),
+                    .padding(5.dp),
             ) {
                 val boardSizePx = with(density) { maxWidth.toPx() }
                 val gridSize = board.size
                 val cellSizePx = boardSizePx / gridSize.toFloat()
                 val letterFontSize = remember(maxWidth) {
-                    (maxWidth.value / 15.0f).coerceIn(14f, 27f).sp
+                    (maxWidth.value / 14.2f).coerceIn(15f, 28f).sp
                 }
 
-                // Subtle connector dots between adjacent active bubbles to keep the path
-                // visually connected without drawing a thick straight line through letters.
+                // Subtle connector dots between adjacent active bubbles without a straight-line overlay
                 if (activeSelection.size >= 2) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         for (i in 0 until activeSelection.size - 1) {
@@ -149,7 +163,7 @@ fun WordGridBoard(
                             val by = (b.row + 0.5f) * cellSizePx
                             val mid = Offset((ax + bx) / 2f, (ay + by) / 2f)
                             drawCircle(
-                                color = PrimaryBlue.copy(alpha = 0.48f),
+                                color = PrimaryBlue.copy(alpha = 0.50f),
                                 radius = cellSizePx * 0.12f,
                                 center = mid,
                             )
@@ -160,7 +174,7 @@ fun WordGridBoard(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(board, isRoundFinished) {
+                        .pointerInput(board, isRoundFinished, isVibrationEnabled) {
                             if (isRoundFinished) return@pointerInput
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -200,7 +214,9 @@ fun WordGridBoard(
                                     if (next != currentSelection) {
                                         currentSelection = next
                                         activeSelection = next
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        if (isVibrationEnabled) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
                                         onSelectionChanged(next, wordFor(next))
                                     }
                                 }
@@ -226,7 +242,7 @@ fun WordGridBoard(
                                 val isHinted = coord in hintedCells
                                 val isWrong = coord in wrongSelectionCells
 
-                                BubbleLetterCell(
+                                CreamBubbleTileCell(
                                     letter = letter,
                                     isSelected = isSelected,
                                     foundColorIndex = foundColorIndex,
@@ -237,7 +253,7 @@ fun WordGridBoard(
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxSize()
-                                        .padding(2.5.dp)
+                                        .padding(1.5.dp)
                                         .testTag("grid_cell_${row}_${col}"),
                                 )
                             }
@@ -250,7 +266,7 @@ fun WordGridBoard(
 }
 
 @Composable
-private fun BubbleLetterCell(
+private fun CreamBubbleTileCell(
     letter: Char,
     isSelected: Boolean,
     foundColorIndex: Int?,
@@ -264,60 +280,58 @@ private fun BubbleLetterCell(
         WordHighlightColors[it % WordHighlightColors.size]
     }
 
-    val targetBgColor = when {
-        isSelected -> PrimaryBlue
-        isWrong -> WarningRedSoft
-        isHinted && hintPulseOn -> HintYellow.copy(alpha = 0.88f)
-        isHinted -> HintYellow.copy(alpha = 0.35f)
-        highlightColor != null -> highlightColor.copy(alpha = 0.35f)
-        else -> Color(0xFFF3F6FC)
-    }
-
-    val targetBorderColor = when {
-        isSelected -> Color(0xFF1D4ED8)
-        isWrong -> WarningRed
-        isHinted -> HintYellowBorder
-        highlightColor != null -> highlightColor.copy(alpha = 0.78f)
-        else -> Color(0xFFE3E8F4)
-    }
-
-    val targetTextColor = when {
-        isSelected -> Color.White
-        isWrong -> WarningRed
-        else -> MainText
-    }
-
     val targetScale = when {
-        isSelected -> 1.12f
-        isHinted && hintPulseOn -> 1.12f
+        isSelected -> 1.10f
+        isHinted && hintPulseOn -> 1.10f
         isWrong -> 0.93f
         else -> 1.0f
     }
 
-    val animatedBg by animateColorAsState(
-        targetValue = targetBgColor,
-        animationSpec = tween(durationMillis = 150),
-        label = "bubble_bg",
-    )
-    val animatedBorder by animateColorAsState(
-        targetValue = targetBorderColor,
-        animationSpec = tween(durationMillis = 150),
-        label = "bubble_border",
-    )
-    val animatedText by animateColorAsState(
-        targetValue = targetTextColor,
-        animationSpec = tween(durationMillis = 140),
-        label = "bubble_text",
-    )
     val animatedScale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium,
         ),
-        label = "bubble_scale",
+        label = "tile_scale",
     )
 
+    val tileOverlayColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> PrimaryBlue
+            isWrong -> WarningRedSoft
+            isHinted && hintPulseOn -> HintYellow.copy(alpha = 0.85f)
+            isHinted -> HintYellow.copy(alpha = 0.40f)
+            highlightColor != null -> highlightColor.copy(alpha = 0.35f)
+            else -> Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 150),
+        label = "tile_overlay",
+    )
+
+    val tileBorderColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> Color(0xFF1D4ED8)
+            isWrong -> WarningRed
+            isHinted -> HintYellowBorder
+            highlightColor != null -> highlightColor.copy(alpha = 0.78f)
+            else -> Color(0xFFD3E2F8)
+        },
+        animationSpec = tween(durationMillis = 150),
+        label = "tile_border",
+    )
+
+    val letterColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> Color.White
+            isWrong -> WarningRed
+            else -> MainText
+        },
+        animationSpec = tween(durationMillis = 130),
+        label = "tile_letter",
+    )
+
+    // Crisp sky-white bevelled tile base, transitioning to circular bubble when selected
     Box(
         modifier = modifier
             .graphicsLayer {
@@ -326,37 +340,46 @@ private fun BubbleLetterCell(
             }
             .then(
                 if (isSelected) {
-                    Modifier.shadow(elevation = 7.dp, shape = CircleShape, clip = false)
+                    Modifier.shadow(elevation = 6.dp, shape = CircleShape, clip = false)
                 } else {
                     Modifier
                 }
             )
-            .clip(CircleShape)
-            .then(
-                if (isSelected) {
-                    Modifier.background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color(0xFF4BA0FF), PrimaryBlue)
-                        )
-                    )
-                } else {
-                    Modifier.background(animatedBg)
-                }
-            )
-            .border(
-                width = if (isSelected || highlightColor != null || isHinted || isWrong) 1.75.dp else 1.dp,
-                color = animatedBorder,
-                shape = CircleShape,
-            ),
-        contentAlignment = Alignment.Center,
+            .clip(if (isSelected) CircleShape else RoundedCornerShape(10.dp))
+            .background(TileEdgeShadow)
+            .padding(bottom = if (isSelected) 0.dp else 2.dp),
     ) {
-        Text(
-            text = letter.toString(),
-            fontFamily = NunitoFontFamily,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = fontSize,
-            color = animatedText,
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(if (isSelected) CircleShape else RoundedCornerShape(9.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(SurfaceTileCreamTop, SurfaceTileCreamBottom)
+                    )
+                )
+                .then(
+                    if (tileOverlayColor != Color.Transparent) {
+                        Modifier.background(tileOverlayColor)
+                    } else {
+                        Modifier
+                    }
+                )
+                .border(
+                    width = if (isSelected || highlightColor != null || isHinted || isWrong) 1.8.dp else 1.dp,
+                    color = tileBorderColor,
+                    shape = if (isSelected) CircleShape else RoundedCornerShape(9.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = letter.toString(),
+                fontFamily = NunitoFontFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = fontSize,
+                color = letterColor,
+            )
+        }
     }
 }
 

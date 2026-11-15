@@ -1,14 +1,8 @@
 <resources>
     <string name="app_name">Wordly Puzzle</string>
-    <string name="play_now">Play</string>
+    <string name="play_now">Play Now</string>
     <string name="categories_title">Categories</string>
-    <string name="mode_select_title">Choose Mode</string>
-    <string name="classic_mode">Classic Mode</string>
-    <string name="classic_mode_desc">No time limit • Relax &amp; find all words</string>
-    <string name="time_mode">Time Mode</string>
-    <string name="time_mode_desc">02:00 countdown • Speed bonus points</string>
-    <string name="hint_label">Hint</string>
-    <string name="watch_ad_hint">+1 Hint (Ad)</string>
+    <string name="hint_label">Free Hint</string>
     <string name="play_again">Play Again</string>
     <string name="next_level">Next Level</string>
     <string name="home_label">Home</string>

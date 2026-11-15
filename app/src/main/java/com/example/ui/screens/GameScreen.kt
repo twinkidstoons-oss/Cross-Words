@@ -35,12 +35,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Lightbulb
-import androidx.compose.material.icons.rounded.PlayCircleOutline
+import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,16 +60,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ads.AdManager
-import com.example.model.GameMode
 import com.example.model.GameUiState
 import com.example.model.GridCoord
 import com.example.model.PlayerProgress
 import com.example.ui.components.BackCircleButton
 import com.example.ui.components.CoinPill
+import com.example.ui.components.GetHintOptionsDialog
 import com.example.ui.components.MuteToggleButton
 import com.example.ui.components.ScorePill
 import com.example.ui.components.TargetWordsChips
 import com.example.ui.components.TimerPill
+import com.example.ui.components.WatchAdForCoinsDialog
 import com.example.ui.components.WordGridBoard
 import com.example.ui.components.WordlyAmbientBackground
 import com.example.ui.theme.FredokaFontFamily
@@ -84,6 +84,7 @@ import com.example.ui.theme.PinkSoft
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.SecondaryText
 import com.example.ui.theme.SurfaceWhite
+import com.example.viewmodel.WordlyViewModel
 import kotlinx.coroutines.delay
 
 @Composable
@@ -95,7 +96,9 @@ fun GameScreen(
     onSelectionChanged: (List<GridCoord>) -> Unit,
     onSelectionFinished: (List<GridCoord>) -> Unit,
     onUseHint: () -> Unit,
+    onUseHintWithCoins: () -> Unit,
     onRewardedHintEarned: () -> Unit,
+    onRewardedCoinsEarned: () -> Unit,
     onShowMessage: (String) -> Unit,
     onRoundFinishedNavigate: () -> Unit,
 ) {
@@ -105,8 +108,57 @@ fun GameScreen(
     val activity = remember(context) { context.findActivity() }
     var isSelectionActive by remember { mutableStateOf(false) }
     var livePreviewWord by remember(gameState.board) { mutableStateOf("") }
+    var showCoinsDialog by remember { mutableStateOf(false) }
+    var showHintOptionsDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(gameState.isRoundFinished) {
+    val triggerWatchAdForCoins: () -> Unit = {
+        AdManager.showRewardedAdForCoins(
+            activity = activity,
+            onRewardEarned = onRewardedCoinsEarned,
+            onUnavailable = {
+                onShowMessage("Ad unavailable right now. Try again shortly!")
+            },
+        )
+    }
+
+    val triggerWatchAdForHint: () -> Unit = {
+        AdManager.showRewardedAdForHint(
+            activity = activity,
+            onRewardEarned = onRewardedHintEarned,
+            onUnavailable = {
+                onShowMessage("Ad unavailable right now. Try again shortly!")
+            },
+        )
+    }
+
+    if (showCoinsDialog) {
+        WatchAdForCoinsDialog(
+            currentCoins = progress.coins,
+            onWatchAd = {
+                showCoinsDialog = false
+                triggerWatchAdForCoins()
+            },
+            onDismiss = { showCoinsDialog = false },
+        )
+    }
+
+    if (showHintOptionsDialog) {
+        GetHintOptionsDialog(
+            currentCoins = progress.coins,
+            coinCost = WordlyViewModel.COIN_HINT_COST,
+            onWatchAdForHint = {
+                showHintOptionsDialog = false
+                triggerWatchAdForHint()
+            },
+            onUseCoinsForHint = {
+                showHintOptionsDialog = false
+                onUseHintWithCoins()
+            },
+            onDismiss = { showHintOptionsDialog = false },
+        )
+    }
+
+    LaunchedEffect(gameState.category.id, gameState.isRoundFinished) {
         if (gameState.isRoundFinished) {
             delay(420L)
             if (!isSelectionActive) {
@@ -133,36 +185,44 @@ fun GameScreen(
                     .widthIn(max = 960.dp)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
-                // Top Bar: Back, Category Title, Coins, Mute
+                // Top Bar: Back, Level & Category Title, Coins, Mute
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         BackCircleButton(onClick = onBack)
                         Spacer(modifier = Modifier.width(10.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "${gameState.category.emoji} ${gameState.category.name}",
+                                text = "Level ${gameState.category.id} • ${gameState.category.emoji} ${gameState.category.name}",
                                 style = MaterialTheme.typography.titleLarge,
+                                fontSize = 18.sp,
                                 color = MainText,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("game_level_title"),
                             )
                             Text(
-                                text = gameState.mode.displayName,
+                                text = "Find all ${gameState.board.placedWords.size} hidden words",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = SecondaryText,
+                                maxLines = 1,
                             )
                         }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CoinPill(coins = progress.coins)
+                        CoinPill(
+                            coins = progress.coins,
+                            onClick = { showCoinsDialog = true },
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         MuteToggleButton(
                             isMuted = progress.isMuted,
@@ -197,19 +257,11 @@ fun GameScreen(
                         )
                     }
 
-                    TimerPill(
-                        seconds = if (gameState.mode == GameMode.CLASSIC) {
-                            gameState.elapsedSeconds
-                        } else {
-                            gameState.remainingSeconds
-                        },
-                        isWarning = gameState.isWarningTimer,
-                    )
+                    TimerPill(seconds = gameState.elapsedSeconds)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Fixed-height live status strip (dragged word preview / bonus toast / helper hint)
                 LiveStatusBanner(
                     liveWord = if (isSelectionActive) livePreviewWord else "",
                     bonusToastText = gameState.bonusToastText,
@@ -276,21 +328,12 @@ fun GameScreen(
                                 HintControlsRow(
                                     freeHintsRemaining = gameState.freeHintsRemaining,
                                     isRoundFinished = gameState.isRoundFinished,
-                                    onUseHint = onUseHint,
-                                    onRequestRewardedHint = {
-                                        AdManager.showRewardedAdForHint(
-                                            activity = activity,
-                                            onRewardEarned = onRewardedHintEarned,
-                                            onUnavailable = {
-                                                onShowMessage("Ad unavailable right now. Try again shortly!")
-                                            },
-                                        )
-                                    },
+                                    onUseFreeHint = onUseHint,
+                                    onShowHintOptions = { showHintOptionsDialog = true },
                                 )
                             }
                         }
                     } else {
-                        // Portrait: Big 8x8 square centered vertically & horizontally in the focal middle!
                         val boardSide = minOf(boxMaxWidth - 8.dp, boxMaxHeight * 0.60f).coerceAtMost(420.dp)
                         Column(
                             modifier = Modifier.fillMaxSize(),
@@ -342,16 +385,8 @@ fun GameScreen(
                             HintControlsRow(
                                 freeHintsRemaining = gameState.freeHintsRemaining,
                                 isRoundFinished = gameState.isRoundFinished,
-                                onUseHint = onUseHint,
-                                onRequestRewardedHint = {
-                                    AdManager.showRewardedAdForHint(
-                                        activity = activity,
-                                        onRewardEarned = onRewardedHintEarned,
-                                        onUnavailable = {
-                                            onShowMessage("Ad unavailable right now. Try again shortly!")
-                                        },
-                                    )
-                                },
+                                onUseFreeHint = onUseHint,
+                                onShowHintOptions = { showHintOptionsDialog = true },
                             )
                         }
                     }
@@ -512,23 +547,29 @@ private fun WordsCardPanel(gameState: GameUiState) {
 private fun HintControlsRow(
     freeHintsRemaining: Int,
     isRoundFinished: Boolean,
-    onUseHint: () -> Unit,
-    onRequestRewardedHint: () -> Unit,
+    onUseFreeHint: () -> Unit,
+    onShowHintOptions: () -> Unit,
 ) {
-    Row(
+    val hasFreeHints = freeHintsRemaining > 0
+    val isHintButtonEnabled = !isRoundFinished
+
+    Box(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+        contentAlignment = Alignment.Center,
     ) {
-        val canUseFreeHint = freeHintsRemaining > 0 && !isRoundFinished
+        // Single centered Hint button: shows remaining count when > 0; shows Ad symbol when 0 and opens 2-option Hint dialog
         Button(
-            onClick = onUseHint,
-            enabled = canUseFreeHint,
+            onClick = {
+                if (hasFreeHints) onUseFreeHint() else onShowHintOptions()
+            },
+            enabled = isHintButtonEnabled,
             modifier = Modifier
                 .height(48.dp)
+                .widthIn(min = 164.dp)
                 .testTag("hint_button"),
             shape = RoundedCornerShape(50),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = if (canUseFreeHint) 3.dp else 0.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 0.dp),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = if (isHintButtonEnabled) 4.dp else 0.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = OrangeSoft,
                 contentColor = MainText,
@@ -536,59 +577,62 @@ private fun HintControlsRow(
                 disabledContentColor = SecondaryText,
             ),
             border = BorderStroke(
-                width = 1.4.dp,
-                color = if (canUseFreeHint) HintYellowBorder else OutlineSubtle,
+                width = 1.5.dp,
+                color = if (isHintButtonEnabled) HintYellowBorder else OutlineSubtle,
             ),
         ) {
             Icon(
-                imageVector = Icons.Rounded.Lightbulb,
-                contentDescription = stringResource(R.string.hint_label),
-                tint = if (canUseFreeHint) OrangeAccent else SecondaryText,
-                modifier = Modifier.size(20.dp),
+                imageVector = if (hasFreeHints) Icons.Rounded.Lightbulb else Icons.Rounded.OndemandVideo,
+                contentDescription = if (hasFreeHints) {
+                    stringResource(R.string.hint_label)
+                } else {
+                    "Watch ad or use 300 coins for hint"
+                },
+                tint = if (!isHintButtonEnabled) {
+                    SecondaryText
+                } else if (hasFreeHints) {
+                    OrangeAccent
+                } else {
+                    PrimaryBlue
+                },
+                modifier = Modifier.size(19.dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = stringResource(R.string.hint_label),
+                text = if (hasFreeHints) stringResource(R.string.hint_label) else "Hint",
                 style = MaterialTheme.typography.labelLarge,
+                fontSize = 14.sp,
+                maxLines = 1,
+                softWrap = false,
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                shape = CircleShape,
-                color = if (canUseFreeHint) OrangeAccent else SecondaryText.copy(alpha = 0.25f),
-            ) {
-                Text(
-                    text = freeHintsRemaining.toString(),
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (canUseFreeHint) Color.White else SecondaryText,
-                )
-            }
-        }
-
-        if (freeHintsRemaining == 0 && !isRoundFinished) {
-            OutlinedButton(
-                onClick = onRequestRewardedHint,
-                modifier = Modifier
-                    .height(48.dp)
-                    .testTag("rewarded_hint_button"),
-                shape = RoundedCornerShape(50),
-                border = BorderStroke(1.4.dp, PrimaryBlue),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = SurfaceWhite,
-                    contentColor = PrimaryBlue,
-                ),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.PlayCircleOutline,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp),
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = stringResource(R.string.watch_ad_hint),
-                    style = MaterialTheme.typography.labelLarge,
-                )
+            if (hasFreeHints) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isHintButtonEnabled) OrangeAccent else SecondaryText.copy(alpha = 0.25f),
+                ) {
+                    Text(
+                        text = freeHintsRemaining.toString(),
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isHintButtonEnabled) Color.White else SecondaryText,
+                    )
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isHintButtonEnabled) PrimaryBlue else SecondaryText.copy(alpha = 0.25f),
+                    modifier = Modifier.testTag("hint_ad_badge"),
+                ) {
+                    Text(
+                        text = "AD",
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isHintButtonEnabled) Color.White else SecondaryText,
+                    )
+                }
             }
         }
     }

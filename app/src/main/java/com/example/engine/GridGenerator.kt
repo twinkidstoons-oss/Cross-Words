@@ -27,23 +27,31 @@ object GridGenerator {
     fun generate(
         category: Category,
         random: Random = Random.Default,
+        overrideWords: List<String>? = null,
+        exactDesiredCount: Int? = null,
     ): PuzzleBoard {
-        val validWords = CategoriesRepository.validateWords(category.words)
-        val desiredCount = if (validWords.size <= MIN_TARGET_WORDS) {
-            validWords.size
-        } else {
-            val upper = minOf(MAX_TARGET_WORDS, validWords.size)
-            random.nextInt(MIN_TARGET_WORDS, upper + 1)
+        val sourceList = overrideWords ?: category.words
+        val validWords = CategoriesRepository.validateWords(sourceList)
+        val desiredCount = when {
+            exactDesiredCount != null -> exactDesiredCount.coerceAtMost(validWords.size)
+            validWords.size <= MIN_TARGET_WORDS -> validWords.size
+            else -> {
+                val upper = minOf(MAX_TARGET_WORDS, validWords.size)
+                random.nextInt(MIN_TARGET_WORDS, upper + 1)
+            }
         }
 
-        // Try multiple candidate shuffles to ensure a rich, well-packed 8x8 puzzle
         var bestGrid: Array<CharArray>? = null
         var bestPlaced: List<PlacedWord> = emptyList()
 
-        repeat(12) {
-            val shuffled = validWords.shuffled(random)
-            val primaryBatch = shuffled.take(desiredCount).sortedByDescending { it.length }
-            val fallbackBatch = shuffled.drop(desiredCount).sortedByDescending { it.length }
+        repeat(16) { attempt ->
+            val ordered = if (overrideWords != null && attempt == 0) {
+                validWords
+            } else {
+                validWords.shuffled(random)
+            }
+            val primaryBatch = ordered.take(desiredCount).sortedByDescending { it.length }
+            val fallbackBatch = ordered.drop(desiredCount).sortedByDescending { it.length }
 
             val grid = Array(GRID_SIZE) { CharArray(GRID_SIZE) { '\u0000' } }
             val placed = mutableListOf<PlacedWord>()
@@ -52,7 +60,6 @@ object GridGenerator {
                 tryPlaceWord(word, grid, random)?.let { placed.add(it) }
             }
 
-            // If any primary word failed to place, try remaining valid words from category
             if (placed.size < desiredCount) {
                 for (fallbackWord in fallbackBatch) {
                     if (placed.size >= desiredCount) break
@@ -91,7 +98,6 @@ object GridGenerator {
             }
         }.shuffled(random)
 
-        // First pass: prefer crossings so the puzzle feels interconnected
         for ((dr, dc) in allDirections) {
             for ((sr, sc) in startPositions) {
                 val endR = sr + dr * (word.length - 1)
@@ -119,7 +125,6 @@ object GridGenerator {
             }
         }
 
-        // Second pass: any valid non-conflicting placement
         for ((dr, dc) in allDirections) {
             for ((sr, sc) in startPositions) {
                 val endR = sr + dr * (word.length - 1)

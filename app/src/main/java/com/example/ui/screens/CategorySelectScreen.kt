@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,11 +36,17 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,11 +54,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.ads.AdManager
 import com.example.data.CategoriesRepository
 import com.example.model.Category
 import com.example.model.PlayerProgress
 import com.example.ui.components.BackCircleButton
 import com.example.ui.components.CoinPill
+import com.example.ui.components.WatchAdForCoinsDialog
 import com.example.ui.components.WordlyAmbientBackground
 import com.example.ui.theme.MainText
 import com.example.ui.theme.OutlineSubtle
@@ -66,10 +77,40 @@ fun CategorySelectScreen(
     progress: PlayerProgress,
     onBack: () -> Unit,
     onCategorySelected: (Category) -> Unit,
+    onRewardedCoinsEarned: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val categories = CategoriesRepository.categories
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    var showCoinsDialog by remember { mutableStateOf(false) }
+
+    if (showCoinsDialog) {
+        WatchAdForCoinsDialog(
+            currentCoins = progress.coins,
+            onWatchAd = {
+                showCoinsDialog = false
+                AdManager.showRewardedAdForCoins(
+                    activity = activity,
+                    onRewardEarned = {
+                        onRewardedCoinsEarned()
+                        scope.launch {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar("+500 Coins added!")
+                        }
+                    },
+                    onUnavailable = {
+                        scope.launch {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar("Ad unavailable right now. Please try again shortly!")
+                        }
+                    },
+                )
+            },
+            onDismiss = { showCoinsDialog = false },
+        )
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -88,7 +129,7 @@ fun CategorySelectScreen(
                         .fillMaxSize()
                         .widthIn(max = 720.dp),
                 ) {
-                    // Header
+                    // Header: left title column gets weight(1f) so CoinPill never clips or wraps
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -96,23 +137,35 @@ fun CategorySelectScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             BackCircleButton(onClick = onBack)
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = stringResource(R.string.categories_title),
                                     style = MaterialTheme.typography.headlineMedium,
                                     color = MainText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = "Complete a level to unlock the next",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = SecondaryText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
-                        CoinPill(coins = progress.coins)
+                        CoinPill(
+                            coins = progress.coins,
+                            onClick = { showCoinsDialog = true },
+                        )
                     }
 
                     // 25 Categories Grid in exact order
@@ -163,6 +216,24 @@ private fun CategoryCard(
     isCompleted: Boolean,
     onClick: () -> Unit,
 ) {
+    var visible by remember(category.id) { mutableStateOf(false) }
+    LaunchedEffect(category.id) {
+        visible = true
+    }
+    val cardScale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0.92f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "cat_scale_${category.id}",
+    )
+    val cardAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "cat_alpha_${category.id}",
+    )
+
     val cardBg = if (isUnlocked) SurfaceWhite else SurfaceSoft
     val borderColor = when {
         isCompleted -> SuccessGreen.copy(alpha = 0.55f)
@@ -174,6 +245,11 @@ private fun CategoryCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+                alpha = cardAlpha
+            }
             .testTag("category_card_${category.id}"),
         shape = RoundedCornerShape(24.dp),
         color = cardBg,

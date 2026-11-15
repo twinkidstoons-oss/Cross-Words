@@ -51,6 +51,26 @@ class PlayerProgressStore(private val context: Context) {
         }
     }
 
+    suspend fun spendCoins(amount: Int): Boolean {
+        var succeeded = false
+        context.wordlyDataStore.edit { prefs ->
+            val currentCoins = prefs[KEY_COINS] ?: STARTING_COINS
+            if (currentCoins >= amount) {
+                prefs[KEY_COINS] = currentCoins - amount
+                succeeded = true
+            }
+        }
+        return succeeded
+    }
+
+    suspend fun addCoins(amount: Int) {
+        if (amount <= 0) return
+        context.wordlyDataStore.edit { prefs ->
+            val currentCoins = prefs[KEY_COINS] ?: STARTING_COINS
+            prefs[KEY_COINS] = currentCoins + amount
+        }
+    }
+
     suspend fun setMuted(muted: Boolean) {
         context.wordlyDataStore.edit { prefs ->
             prefs[KEY_IS_MUTED] = muted

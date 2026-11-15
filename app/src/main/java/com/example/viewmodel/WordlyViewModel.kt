@@ -8,7 +8,7 @@ import com.example.data.BonusDictionary
 import com.example.data.CategoriesRepository
 import com.example.data.PlayerProgressStore
 import com.example.engine.GridGenerator
-import com.example.model.GameMode
+import com.example.model.FoundWordEntry
 import com.example.model.GameUiState
 import com.example.model.GridCoord
 import com.example.model.PlayerProgress
@@ -24,6 +24,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class WordlyViewModel(application: Application) : AndroidViewModel(application) {
+
+    companion object {
+        const val COIN_HINT_COST = 300
+        const val REWARDED_AD_COINS = 500
+    }
 
     private val progressStore = PlayerProgressStore(application.applicationContext)
     val soundManager = SoundEffectsManager(application.applicationContext)
@@ -48,6 +53,7 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
     private var infoMsgJob: Job? = null
 
     private var rewardClaimedForCurrentRound = false
+    private var isSpendingCoinsForHint = false
 
     init {
         viewModelScope.launch {
@@ -76,19 +82,17 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
         soundManager.playSwipe()
     }
 
-    fun startNewGame(categoryId: Int, mode: GameMode) {
+    fun startNewGame(categoryId: Int) {
         stopTimersAndJobs()
         rewardClaimedForCurrentRound = false
-        _roundResult.value = null
+        isSpendingCoinsForHint = false
 
         val category = CategoriesRepository.getById(categoryId)
         val board = GridGenerator.generate(category)
 
         _gameState.value = GameUiState(
             category = category,
-            mode = mode,
             board = board,
-            remainingSeconds = GameUiState.TIME_MODE_DURATION_SECONDS,
         )
         startTimer()
     }
@@ -105,28 +109,8 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
                 delay(1000L)
                 val current = _gameState.value ?: break
                 if (current.isRoundFinished) break
-
-                if (current.mode == GameMode.CLASSIC) {
-                    _gameState.update { state ->
-                        state?.copy(elapsedSeconds = state.elapsedSeconds + 1)
-                    }
-                } else {
-                    val nextRemaining = (current.remainingSeconds - 1).coerceAtLeast(0)
-                    val nextElapsed = current.elapsedSeconds + 1
-                    _gameState.update { state ->
-                        state?.copy(
-                            elapsedSeconds = nextElapsed,
-                            remainingSeconds = nextRemaining,
-                        )
-                    }
-                    if (nextRemaining in 1..29) {
-                        soundManager.playTick()
-                    }
-                    if (nextRemaining <= 0) {
-                        soundManager.playTimeOver()
-                        finishRound(completed = false)
-                        break
-                    }
+                _gameState.update { state ->
+                    state?.copy(elapsedSeconds = state.elapsedSeconds + 1)
                 }
             }
         }
@@ -134,9 +118,7 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
 
     fun submitSelection(selectedCells: List<GridCoord>) {
         val state = _gameState.value ?: return
-        if (state.isRoundFinished || selectedCells.isEmpty()) return
-
-        if (selectedCells.size < 2) return
+        if (state.isRoundFinished || selectedCells.size < 2) return
 
         val selectedWord = buildString(selectedCells.size) {
             for (coord in selectedCells) {
@@ -145,7 +127,6 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
         }
         val reversedWord = selectedWord.reversed()
 
-        // 1. Check if selection matches an unfound target word (forward or reverse drag)
         val matchedTarget = state.board.placedWords.firstOrNull { placed ->
             placed.word !in state.foundWordNames &&
                 (placed.cells == selectedCells || placed.cells.reversed() == selectedCells) &&
@@ -154,7 +135,7 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
 
         if (matchedTarget != null) {
             val nextColorIdx = state.foundWords.size
-            val newFoundEntry = com.example.model.FoundWordEntry(
+            val newFoundEntry = FoundWordEntry(
                 word = matchedTarget.word,
                 cells = matchedTarget.cells,
                 colorIndex = nextColorIdx,
@@ -175,23 +156,19 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
 
             if (allFound) {
                 soundManager.playWin()
-                finishRound(completed = true)
+                finishRound()
             } else {
                 soundManager.playCorrect()
             }
             return
         }
 
-        // 2. Check if selection matches an already-found target word (ignore gently)
         val alreadyFound = state.board.placedWords.any { placed ->
             placed.word in state.foundWordNames &&
                 (placed.cells == selectedCells || placed.cells.reversed() == selectedCells)
         }
-        if (alreadyFound) {
-            return
-        }
+        if (alreadyFound) return
 
-        // 3. Check Bonus Word (offline dictionary >= 3 letters, not a puzzle target word, scored once)
         val targetWordSet = state.board.placedWords.map { it.word }.toSet()
         val candidateBonus = when {
             BonusDictionary.isBonusWord(selectedWord, targetWordSet) &&
@@ -219,7 +196,6 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        // 4. Wrong selection feedback
         soundManager.playWrong()
         wrongFeedbackJob?.cancel()
         _gameState.update { it?.copy(wrongSelectionCells = selectedCells.toSet()) }
@@ -249,15 +225,80 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
         triggerHintPulseAnimation()
     }
 
-    fun grantRewardedHint() {
-        soundManager.playBonus()
-        _gameState.update { s ->
-            s?.copy(
-                freeHintsRemaining = s.freeHintsRemaining + 1,
-                infoMessage = "+1 Hint added!",
-            )
+    fun useHintWithCoins() {
+        val state = _gameState.value ?: return
+        if (state.isRoundFinished || isSpendingCoinsForHint) return
+
+        val unfoundWords = state.board.placedWords.filter { it.word !in state.foundWordNames }
+        if (unfoundWords.isEmpty()) return
+
+        if (playerProgress.value.coins < COIN_HINT_COST) {
+            showTransientMessage("Need $COIN_HINT_COST coins for a hint. Tap + on coins for +$REWARDED_AD_COINS!")
+            return
         }
-        scheduleClearInfoMessage()
+
+        isSpendingCoinsForHint = true
+        viewModelScope.launch {
+            try {
+                val spent = progressStore.spendCoins(COIN_HINT_COST)
+                if (!spent) {
+                    showTransientMessage("Need $COIN_HINT_COST coins for a hint.")
+                    return@launch
+                }
+                val chosen = unfoundWords.random()
+                soundManager.playBonus()
+                _gameState.update { s ->
+                    s?.copy(
+                        hintedCells = chosen.cells.toSet(),
+                        hintPulseStep = 1,
+                        infoMessage = "Hint unlocked! (-$COIN_HINT_COST coins)",
+                    )
+                }
+                triggerHintPulseAnimation()
+                scheduleClearInfoMessage()
+            } finally {
+                isSpendingCoinsForHint = false
+            }
+        }
+    }
+
+    fun grantAndUseRewardedHint() {
+        val state = _gameState.value ?: return
+        if (state.isRoundFinished) return
+
+        val unfoundWords = state.board.placedWords.filter { it.word !in state.foundWordNames }
+        if (unfoundWords.isNotEmpty()) {
+            val chosen = unfoundWords.random()
+            soundManager.playBonus()
+            _gameState.update { s ->
+                s?.copy(
+                    hintedCells = chosen.cells.toSet(),
+                    hintPulseStep = 1,
+                    infoMessage = "Ad Hint unlocked!",
+                )
+            }
+            triggerHintPulseAnimation()
+            scheduleClearInfoMessage()
+        } else {
+            _gameState.update { s ->
+                s?.copy(
+                    freeHintsRemaining = s.freeHintsRemaining + 1,
+                    infoMessage = "+1 Hint added!",
+                )
+            }
+            scheduleClearInfoMessage()
+        }
+    }
+
+    fun grantRewardedCoins() {
+        soundManager.playBonus()
+        viewModelScope.launch {
+            progressStore.addCoins(REWARDED_AD_COINS)
+            _gameState.update { s ->
+                s?.copy(infoMessage = "+$REWARDED_AD_COINS Coins added!")
+            }
+            scheduleClearInfoMessage()
+        }
     }
 
     fun showTransientMessage(message: String) {
@@ -268,7 +309,6 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
     private fun triggerHintPulseAnimation() {
         hintAnimJob?.cancel()
         hintAnimJob = viewModelScope.launch {
-            // 3 distinct pulses over ~1.5 seconds (500ms per pulse cycle)
             for (step in 1..6) {
                 _gameState.update { it?.copy(hintPulseStep = step) }
                 delay(250L)
@@ -293,19 +333,13 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun finishRound(completed: Boolean) {
+    private fun finishRound() {
         timerJob?.cancel()
         val state = _gameState.value ?: return
         if (state.isRoundFinished) return
 
-        val timeBonus = if (completed && state.mode == GameMode.TIME) {
-            state.remainingSeconds * 2
-        } else {
-            0
-        }
-        val finalScore = state.wordPoints + state.bonusWordPoints + timeBonus
-
-        val coinsAwarded = if (completed && !rewardClaimedForCurrentRound) {
+        val finalScore = state.wordPoints + state.bonusWordPoints
+        val coinsAwarded = if (!rewardClaimedForCurrentRound) {
             rewardClaimedForCurrentRound = true
             GameUiState.COINS_PER_WIN
         } else {
@@ -326,18 +360,15 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
             categoryId = state.category.id,
             categoryName = state.category.name,
             categoryEmoji = state.category.emoji,
-            mode = state.mode,
-            completed = completed,
+            completed = true,
             totalScore = finalScore,
             wordPoints = state.wordPoints,
             bonusWordPoints = state.bonusWordPoints,
-            timeBonusPoints = timeBonus,
             wordsFoundCount = state.foundWords.size,
             totalWordsCount = state.board.placedWords.size,
             bonusWordsCount = state.bonusWordsFound.size,
             coinsEarned = coinsAwarded,
             elapsedSeconds = state.elapsedSeconds,
-            remainingSeconds = state.remainingSeconds,
             hasNextLevel = hasNext,
         )
 
