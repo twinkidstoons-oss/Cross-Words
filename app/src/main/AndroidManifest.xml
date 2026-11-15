@@ -26,10 +26,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.WordlyPuzzle">
 
-        <!-- Google Mobile Ads official Android TEST App ID -->
+        <!-- Google Mobile Ads App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-8052627971401987~2149101206" />
 
         <!-- Remove Privacy Sandbox AD_SERVICES_CONFIG property -->
         <property

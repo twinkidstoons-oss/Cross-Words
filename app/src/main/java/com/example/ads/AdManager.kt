@@ -19,14 +19,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Manages Google Mobile Ads using official Android TEST Ad Unit IDs only.
+ * Manages Google Mobile Ads Interstitial and Rewarded ads.
  * Gracefully falls back if offline or if ads fail to load.
  */
 object AdManager {
 
-    // Official Google AdMob Android TEST Ad Unit IDs
-    const val INTERSTITIAL_TEST_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
-    const val REWARDED_TEST_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917"
+    private const val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-8052627971401987/9222930966"
+    private const val REWARDED_AD_UNIT_ID = "ca-app-pub-8052627971401987/7377377155"
 
     private const val MIN_INTERSTITIAL_INTERVAL_MS = 60_000L
 
@@ -63,7 +62,7 @@ object AdManager {
             val request = AdRequest.Builder().build()
             InterstitialAd.load(
                 context.applicationContext,
-                INTERSTITIAL_TEST_AD_UNIT_ID,
+                INTERSTITIAL_AD_UNIT_ID,
                 request,
                 object : InterstitialAdLoadCallback() {
                     override fun onAdLoaded(ad: InterstitialAd) {
@@ -89,7 +88,7 @@ object AdManager {
             val request = AdRequest.Builder().build()
             RewardedAd.load(
                 context.applicationContext,
-                REWARDED_TEST_AD_UNIT_ID,
+                REWARDED_AD_UNIT_ID,
                 request,
                 object : RewardedAdLoadCallback() {
                     override fun onAdLoaded(ad: RewardedAd) {
