@@ -105,6 +105,7 @@ fun ResultsScreen(
     progress: PlayerProgress,
     onPlayAgain: (Int) -> Unit,
     onNextLevel: (Int) -> Unit,
+    onNextDailyStage: () -> Unit = {},
     onHome: () -> Unit,
     onRewardedCoinsEarned: () -> Unit = {},
 ) {
@@ -285,7 +286,11 @@ fun ResultsScreen(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             Text(
-                                text = "Level Complete!",
+                                text = when {
+                                    result.isDailyChallenge && result.isDailyChallengeCompleted -> "Daily Challenge Complete!"
+                                    result.isDailyChallenge -> "Stage ${result.dailyChallengeStage}/${result.dailyChallengeTotalStages} Complete!"
+                                    else -> "Level Complete!"
+                                },
                                 style = MaterialTheme.typography.headlineLarge,
                                 color = MainText,
                                 textAlign = TextAlign.Center,
@@ -295,7 +300,14 @@ fun ResultsScreen(
                             Spacer(modifier = Modifier.height(6.dp))
 
                             Text(
-                                text = "Level ${result.categoryId} • ${result.categoryEmoji} ${result.categoryName}",
+                                text = when {
+                                    result.isDailyChallenge && result.isDailyChallengeCompleted ->
+                                        "All ${result.dailyChallengeTotalStages} levels solved • 12h timer started"
+                                    result.isDailyChallenge ->
+                                        "${result.categoryEmoji} ${result.categoryName} • Daily Challenge"
+                                    else ->
+                                        "Level ${result.categoryId} • ${result.categoryEmoji} ${result.categoryName}"
+                                },
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = SecondaryText,
                                 textAlign = TextAlign.Center,
@@ -394,7 +406,11 @@ fun ResultsScreen(
                         Button(
                             onClick = {
                                 AdManager.maybeShowInterstitial(activity = activity) {
-                                    onNextLevel(result.categoryId + 1)
+                                    if (result.isDailyChallenge) {
+                                        onNextDailyStage()
+                                    } else {
+                                        onNextLevel(result.categoryId + 1)
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -421,7 +437,11 @@ fun ResultsScreen(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "Next: Level ${result.categoryId + 1}",
+                                        text = if (result.isDailyChallenge) {
+                                            "Next: Stage ${result.dailyChallengeStage + 1}/${result.dailyChallengeTotalStages}"
+                                        } else {
+                                            "Next: Level ${result.categoryId + 1}"
+                                        },
                                         style = MaterialTheme.typography.titleLarge,
                                         fontSize = 18.sp,
                                         maxLines = 1,
@@ -441,33 +461,35 @@ fun ResultsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                AdManager.maybeShowInterstitial(activity = activity) {
-                                    onPlayAgain(result.categoryId)
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(52.dp)
-                                .testTag("play_again_button"),
-                            shape = RoundedCornerShape(18.dp),
-                            border = BorderStroke(1.4.dp, PrimaryBlue),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = SurfaceWhite,
-                                contentColor = PrimaryBlue,
-                            ),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = stringResource(R.string.play_again),
-                                style = MaterialTheme.typography.labelLarge,
-                            )
+                        if (!result.isDailyChallenge) {
+                            OutlinedButton(
+                                onClick = {
+                                    AdManager.maybeShowInterstitial(activity = activity) {
+                                        onPlayAgain(result.categoryId)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("play_again_button"),
+                                shape = RoundedCornerShape(18.dp),
+                                border = BorderStroke(1.4.dp, PrimaryBlue),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = SurfaceWhite,
+                                    contentColor = PrimaryBlue,
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.play_again),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
                         }
 
                         OutlinedButton(

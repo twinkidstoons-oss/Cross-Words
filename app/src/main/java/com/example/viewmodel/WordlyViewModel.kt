@@ -33,6 +33,8 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
     private val progressStore = PlayerProgressStore(application.applicationContext)
     val soundManager = SoundEffectsManager(application.applicationContext)
 
+    internal var currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() }
+
     val playerProgress: StateFlow<PlayerProgress> = progressStore.progressFlow
         .stateIn(
             scope = viewModelScope,
@@ -93,8 +95,72 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
         _gameState.value = GameUiState(
             category = category,
             board = board,
+            isDailyChallenge = false,
         )
         startTimer()
+    }
+
+    fun startDailyChallenge(): Int? {
+        val nowMs = currentTimeMillisProvider()
+        if (!playerProgress.value.isDailyChallengeAvailable(nowMs)) {
+            return null
+        }
+
+        stopTimersAndJobs()
+        rewardClaimedForCurrentRound = false
+        isSpendingCoinsForHint = false
+
+        val selectedIds = CategoriesRepository.categories
+            .shuffled()
+            .take(GameUiState.DAILY_CHALLENGE_TOTAL_STAGES)
+            .map { it.id }
+
+        val firstCategoryId = selectedIds.first()
+        val category = CategoriesRepository.getById(firstCategoryId)
+        val board = GridGenerator.generate(category)
+
+        _gameState.value = GameUiState(
+            category = category,
+            board = board,
+            isDailyChallenge = true,
+            dailyChallengeStage = 1,
+            dailyChallengeCategories = selectedIds,
+        )
+        startTimer()
+        return firstCategoryId
+    }
+
+    fun advanceDailyChallengeStage(): Int? {
+        val currentState = _gameState.value
+        val result = _roundResult.value
+        val categories = currentState?.dailyChallengeCategories.orEmpty()
+        val currentStage = result?.dailyChallengeStage ?: currentState?.dailyChallengeStage ?: 1
+        val nextStage = currentStage + 1
+        if (nextStage > GameUiState.DAILY_CHALLENGE_TOTAL_STAGES) return null
+
+        val nextCategoryId = categories.getOrNull(nextStage - 1)
+            ?: CategoriesRepository.categories[(nextStage - 1) % CategoriesRepository.categories.size].id
+
+        stopTimersAndJobs()
+        rewardClaimedForCurrentRound = false
+        isSpendingCoinsForHint = false
+
+        val category = CategoriesRepository.getById(nextCategoryId)
+        val board = GridGenerator.generate(category)
+
+        _gameState.value = GameUiState(
+            category = category,
+            board = board,
+            isDailyChallenge = true,
+            dailyChallengeStage = nextStage,
+            dailyChallengeCategories = categories.ifEmpty {
+                CategoriesRepository.categories
+                    .take(GameUiState.DAILY_CHALLENGE_TOTAL_STAGES)
+                    .map { it.id }
+            },
+        )
+        startTimer()
+        return nextCategoryId
     }
 
     fun pauseOrStopGame() {
@@ -182,14 +248,20 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
             soundManager.playBonus()
             val updatedBonusSet = state.bonusWordsFound + candidateBonus
             val updatedBonusPoints = state.bonusWordPoints + GameUiState.POINTS_PER_BONUS_WORD
+            val updatedBonusCoins = state.bonusCoinsEarned + GameUiState.COINS_PER_BONUS_WORD
             val updatedScore = state.wordPoints + updatedBonusPoints
+
+            viewModelScope.launch {
+                progressStore.addCoins(GameUiState.COINS_PER_BONUS_WORD)
+            }
 
             _gameState.update { s ->
                 s?.copy(
                     bonusWordsFound = updatedBonusSet,
                     bonusWordPoints = updatedBonusPoints,
+                    bonusCoinsEarned = updatedBonusCoins,
                     score = updatedScore,
-                    bonusToastText = "+5 Bonus: $candidateBonus",
+                    bonusToastText = "+${GameUiState.COINS_PER_BONUS_WORD} Coins • $candidateBonus (+${GameUiState.POINTS_PER_BONUS_WORD} pts)",
                 )
             }
             scheduleClearBonusToast()
@@ -339,6 +411,55 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
         if (state.isRoundFinished) return
 
         val finalScore = state.wordPoints + state.bonusWordPoints
+
+        if (state.isDailyChallenge) {
+            val isFinalDailyStage = state.dailyChallengeStage >= GameUiState.DAILY_CHALLENGE_TOTAL_STAGES
+            val completionReward = if (isFinalDailyStage && !rewardClaimedForCurrentRound) {
+                rewardClaimedForCurrentRound = true
+                GameUiState.DAILY_CHALLENGE_REWARD_COINS
+            } else {
+                0
+            }
+
+            if (isFinalDailyStage && completionReward > 0) {
+                val completedAt = currentTimeMillisProvider()
+                viewModelScope.launch {
+                    progressStore.recordDailyChallengeCompleted(
+                        completedAtMs = completedAt,
+                        coinsReward = completionReward,
+                    )
+                }
+            }
+
+            _roundResult.value = RoundResult(
+                categoryId = state.category.id,
+                categoryName = state.category.name,
+                categoryEmoji = state.category.emoji,
+                completed = true,
+                totalScore = finalScore,
+                wordPoints = state.wordPoints,
+                bonusWordPoints = state.bonusWordPoints,
+                wordsFoundCount = state.foundWords.size,
+                totalWordsCount = state.board.placedWords.size,
+                bonusWordsCount = state.bonusWordsFound.size,
+                coinsEarned = completionReward + state.bonusCoinsEarned,
+                elapsedSeconds = state.elapsedSeconds,
+                hasNextLevel = !isFinalDailyStage,
+                isDailyChallenge = true,
+                dailyChallengeStage = state.dailyChallengeStage,
+                dailyChallengeTotalStages = GameUiState.DAILY_CHALLENGE_TOTAL_STAGES,
+                isDailyChallengeCompleted = isFinalDailyStage,
+            )
+
+            _gameState.update { s ->
+                s?.copy(
+                    score = finalScore,
+                    isRoundFinished = true,
+                )
+            }
+            return
+        }
+
         val coinsAwarded = if (!rewardClaimedForCurrentRound) {
             rewardClaimedForCurrentRound = true
             GameUiState.COINS_PER_WIN
@@ -367,9 +488,10 @@ class WordlyViewModel(application: Application) : AndroidViewModel(application) 
             wordsFoundCount = state.foundWords.size,
             totalWordsCount = state.board.placedWords.size,
             bonusWordsCount = state.bonusWordsFound.size,
-            coinsEarned = coinsAwarded,
+            coinsEarned = coinsAwarded + state.bonusCoinsEarned,
             elapsedSeconds = state.elapsedSeconds,
             hasNextLevel = hasNext,
+            isDailyChallenge = false,
         )
 
         _gameState.update { s ->

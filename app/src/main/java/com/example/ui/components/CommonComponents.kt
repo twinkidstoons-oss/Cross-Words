@@ -95,6 +95,14 @@ fun formatSecondsMMSS(totalSeconds: Int): String {
     return "%02d:%02d".format(mins, secs)
 }
 
+fun formatDurationHHMMSS(millis: Long): String {
+    val totalSeconds = ((millis + 999L) / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
+
 @Composable
 fun WordlyAmbientBackground(
     modifier: Modifier = Modifier,

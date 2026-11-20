@@ -201,7 +201,11 @@ fun GameScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Level ${gameState.category.id} • ${gameState.category.emoji} ${gameState.category.name}",
+                                text = if (gameState.isDailyChallenge) {
+                                    "Daily ${gameState.dailyChallengeStage}/${GameUiState.DAILY_CHALLENGE_TOTAL_STAGES} • ${gameState.category.emoji} ${gameState.category.name}"
+                                } else {
+                                    "Level ${gameState.category.id} • ${gameState.category.emoji} ${gameState.category.name}"
+                                },
                                 style = MaterialTheme.typography.titleLarge,
                                 fontSize = 18.sp,
                                 color = MainText,

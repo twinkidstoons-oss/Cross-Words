@@ -23,6 +23,7 @@ class PlayerProgressStore(private val context: Context) {
         private val KEY_COINS = intPreferencesKey("coins_balance")
         private val KEY_COMPLETED_CATEGORIES = stringSetPreferencesKey("completed_category_ids")
         private val KEY_IS_MUTED = booleanPreferencesKey("sound_is_muted")
+        private val KEY_DAILY_COMPLETION_TIMESTAMPS = stringSetPreferencesKey("daily_challenge_completion_timestamps")
     }
 
     val progressFlow: Flow<PlayerProgress> = context.wordlyDataStore.data.map { prefs ->
@@ -32,11 +33,16 @@ class PlayerProgressStore(private val context: Context) {
             ?.toSet()
             ?: emptySet()
         val isMuted = prefs[KEY_IS_MUTED] ?: false
+        val dailyTimestamps = prefs[KEY_DAILY_COMPLETION_TIMESTAMPS]
+            ?.mapNotNull { it.toLongOrNull() }
+            ?.sorted()
+            ?: emptyList()
         PlayerProgress(
             coins = coins,
             completedCategoryIds = completedIds,
             isMuted = isMuted,
             isLoaded = true,
+            dailyChallengeCompletionTimestamps = dailyTimestamps,
         )
     }
 
@@ -48,6 +54,22 @@ class PlayerProgressStore(private val context: Context) {
             val currentCompleted = prefs[KEY_COMPLETED_CATEGORIES]?.toMutableSet() ?: mutableSetOf()
             currentCompleted.add(categoryId.toString())
             prefs[KEY_COMPLETED_CATEGORIES] = currentCompleted
+        }
+    }
+
+    suspend fun recordDailyChallengeCompleted(completedAtMs: Long, coinsReward: Int) {
+        context.wordlyDataStore.edit { prefs ->
+            val currentCoins = prefs[KEY_COINS] ?: STARTING_COINS
+            prefs[KEY_COINS] = currentCoins + coinsReward
+
+            val cutoff = completedAtMs - PlayerProgress.DAILY_CHALLENGE_WINDOW_MS
+            val existing = prefs[KEY_DAILY_COMPLETION_TIMESTAMPS]
+                ?.mapNotNull { it.toLongOrNull() }
+                ?.filter { it > cutoff && it <= completedAtMs }
+                ?.toMutableSet()
+                ?: mutableSetOf()
+            existing.add(completedAtMs)
+            prefs[KEY_DAILY_COMPLETION_TIMESTAMPS] = existing.map { it.toString() }.toSet()
         }
     }
 

@@ -342,7 +342,7 @@ private fun CategoryCard(
             Spacer(modifier = Modifier.height(2.dp))
 
             Text(
-                text = if (isUnlocked) "${category.words.size} words • 8×8" else "Locked",
+                text = if (isUnlocked) "${category.words.size} words" else "Locked",
                 style = MaterialTheme.typography.bodyMedium,
                 fontSize = 12.sp,
                 color = SecondaryText,

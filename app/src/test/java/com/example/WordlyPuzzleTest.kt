@@ -13,12 +13,15 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.BonusDictionary
 import com.example.data.CategoriesRepository
 import com.example.engine.GridGenerator
+import com.example.model.GridCoord
 import com.example.model.PlayerProgress
+import com.example.model.PuzzleBoard
 import com.example.ui.theme.WordHighlightColors
 import com.example.ui.theme.WordlyPuzzleTheme
 import com.example.viewmodel.WordlyViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -122,11 +125,14 @@ class WordlyPuzzleTest {
         }
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("home_title").assertIsDisplayed()
+        composeTestRule.onNodeWithText("8×8", substring = true).assertDoesNotExist()
         composeTestRule.onNodeWithTag("coin_balance_pill").assertIsDisplayed()
         composeTestRule.onNodeWithTag("coin_plus_icon", useUnmergedTree = true).assertIsDisplayed()
+        composeTestRule.onNodeWithTag("daily_challenge_button").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("play_button").performScrollTo().performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("categories_grid").assertIsDisplayed()
+        composeTestRule.onNodeWithText("8×8", substring = true).assertDoesNotExist()
         composeTestRule.onNodeWithTag("coin_balance_pill").assertIsDisplayed()
         composeTestRule.onNodeWithTag("category_card_1").performClick()
         composeTestRule.waitForIdle()
@@ -215,5 +221,164 @@ class WordlyPuzzleTest {
 
         composeTestRule.onNodeWithTag("game_level_title").assertTextContains("Level 2", substring = true)
         composeTestRule.onNodeWithTag("word_grid_board").assertIsDisplayed()
+    }
+
+    @Test
+    fun `daily challenge enforces 2 runs per 24h and 12h cooldown`() {
+        val t0 = 1_700_000_000_000L
+        val twelveHours = PlayerProgress.DAILY_CHALLENGE_COOLDOWN_MS
+        val twentyFourHours = PlayerProgress.DAILY_CHALLENGE_WINDOW_MS
+
+        val initial = PlayerProgress()
+        assertTrue(initial.isDailyChallengeAvailable(t0))
+        assertEquals(2, initial.dailyChallengesRemainingIn24h(t0))
+        assertEquals(0L, initial.dailyChallengeRemainingLockMs(t0))
+
+        // After completing 1st Daily Challenge at t0 -> 12h cooldown starts, 1/2 remaining
+        val afterFirst = initial.copy(dailyChallengeCompletionTimestamps = listOf(t0))
+        assertFalse(afterFirst.isDailyChallengeAvailable(t0 + 1_000L))
+        assertEquals(twelveHours - 1_000L, afterFirst.dailyChallengeRemainingLockMs(t0 + 1_000L))
+        assertEquals(1, afterFirst.dailyChallengesRemainingIn24h(t0 + 1_000L))
+
+        // At t0 + 12h -> unlocked for 2nd run of the 24h period
+        assertTrue(afterFirst.isDailyChallengeAvailable(t0 + twelveHours))
+        assertEquals(1, afterFirst.dailyChallengesRemainingIn24h(t0 + twelveHours))
+
+        // After completing 2nd Daily Challenge at t0 + 12h -> 0/2 left, locked for 12h (until t0 + 24h)
+        val t1 = t0 + twelveHours
+        val afterSecond = afterFirst.copy(dailyChallengeCompletionTimestamps = listOf(t0, t1))
+        assertFalse(afterSecond.isDailyChallengeAvailable(t1 + 5_000L))
+        assertEquals(0, afterSecond.dailyChallengesRemainingIn24h(t1 + 5_000L))
+        assertEquals(twelveHours - 5_000L, afterSecond.dailyChallengeRemainingLockMs(t1 + 5_000L))
+
+        // At t0 + 24h -> first run aged out of 24h window & 12h cooldown passed -> available again
+        assertTrue(afterSecond.isDailyChallengeAvailable(t0 + twentyFourHours))
+        assertEquals(1, afterSecond.dailyChallengesRemainingIn24h(t0 + twentyFourHours))
+    }
+
+    @Test
+    fun `bonus words award 20 coins and daily challenge 3 levels award 500 coins and start 12h timer`() {
+        val appContext = ApplicationProvider.getApplicationContext<Application>()
+        val vm = WordlyViewModel(appContext)
+        var fakeNow = 1_800_000_000_000L
+        vm.currentTimeMillisProvider = { fakeNow }
+
+        composeTestRule.setContent {
+            WordlyPuzzleTheme {
+                WordlyPuzzleApp(viewModel = vm)
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // 1. Navigate to normal Level 1 and verify +20 coins for extra bonus word
+        composeTestRule.onNodeWithTag("play_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_card_1").performClick()
+        composeTestRule.waitForIdle()
+        val normalBoard = vm.gameState.value!!.board
+        val normalBonusCells = findAnyBonusWordCells(normalBoard)
+        if (normalBonusCells != null) {
+            val coinsBeforeNormalBonus = vm.playerProgress.value.coins
+            composeTestRule.runOnIdle { vm.submitSelection(normalBonusCells) }
+            composeTestRule.waitUntil(timeoutMillis = 5_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                vm.playerProgress.value.coins == coinsBeforeNormalBonus + 20
+            }
+        }
+
+        // 2. Navigate back to Home (Game -> Categories -> Home) and start Daily Challenge
+        composeTestRule.onNodeWithTag("back_button").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("back_button").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("daily_challenge_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // Stage 1/3 -> also test +20 coins for bonus word in challenge level
+        composeTestRule.onNodeWithTag("game_level_title").assertTextContains("Daily 1/3", substring = true)
+        val stage1Board = vm.gameState.value!!.board
+        val stage1BonusCells = findAnyBonusWordCells(stage1Board)
+        if (stage1BonusCells != null) {
+            val coinsBeforeChallengeBonus = vm.playerProgress.value.coins
+            composeTestRule.runOnIdle { vm.submitSelection(stage1BonusCells) }
+            composeTestRule.waitUntil(timeoutMillis = 5_000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                vm.playerProgress.value.coins == coinsBeforeChallengeBonus + 20
+            }
+        }
+
+        // Solve Stage 1 -> advance to Stage 2/3
+        solveCurrentBoardAndWaitResults(vm)
+        composeTestRule.onNodeWithTag("results_title").assertTextContains("Stage 1/3 Complete!")
+        composeTestRule.onNodeWithTag("next_level_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // Solve Stage 2 -> advance to Stage 3/3
+        composeTestRule.onNodeWithTag("game_level_title").assertTextContains("Daily 2/3", substring = true)
+        solveCurrentBoardAndWaitResults(vm)
+        composeTestRule.onNodeWithTag("results_title").assertTextContains("Stage 2/3 Complete!")
+        composeTestRule.onNodeWithTag("next_level_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // Solve Stage 3 -> +500 coins earned and 12h cooldown timer starts
+        composeTestRule.onNodeWithTag("game_level_title").assertTextContains("Daily 3/3", substring = true)
+        val coinsBeforeDailyFinish = vm.playerProgress.value.coins
+        solveCurrentBoardAndWaitResults(vm)
+        composeTestRule.waitUntil(timeoutMillis = 5_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            vm.playerProgress.value.coins == coinsBeforeDailyFinish + 500
+        }
+        composeTestRule.onNodeWithTag("results_title").assertTextContains("Daily Challenge Complete!")
+        composeTestRule.onNodeWithTag("home_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // Home screen now shows 12h timer and blocks starting another run immediately
+        composeTestRule.onNodeWithTag("daily_challenge_button").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("daily_challenge_timer", useUnmergedTree = true).assertIsDisplayed()
+        assertNull(vm.startDailyChallenge())
+        assertTrue(vm.playerProgress.value.dailyChallengeRemainingLockMs(fakeNow) > 0L)
+    }
+
+    private fun solveCurrentBoardAndWaitResults(vm: WordlyViewModel) {
+        val placedWords = vm.gameState.value!!.board.placedWords
+        composeTestRule.runOnIdle {
+            for (word in placedWords) {
+                vm.submitSelection(word.cells)
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(600L)
+        composeTestRule.waitUntil(timeoutMillis = 5_000) {
+            shadowOf(Looper.getMainLooper()).idle()
+            vm.roundResult.value != null && vm.gameState.value?.isRoundFinished == true
+        }
+        composeTestRule.waitForIdle()
+    }
+
+    private fun findAnyBonusWordCells(board: PuzzleBoard): List<GridCoord>? {
+        val targets = board.placedWords.map { it.word }.toSet()
+        val coordsByLetter = mutableMapOf<Char, MutableList<GridCoord>>()
+        for (r in 0 until board.size) {
+            for (c in 0 until board.size) {
+                coordsByLetter.getOrPut(board.grid[r][c]) { mutableListOf() }.add(GridCoord(r, c))
+            }
+        }
+        for (word in BonusDictionary.words) {
+            if (!BonusDictionary.isBonusWord(word, targets)) continue
+            val used = mutableSetOf<GridCoord>()
+            val path = mutableListOf<GridCoord>()
+            var ok = true
+            for (ch in word) {
+                val candidate = coordsByLetter[ch]?.firstOrNull { it !in used }
+                if (candidate == null) {
+                    ok = false
+                    break
+                }
+                used.add(candidate)
+                path.add(candidate)
+            }
+            if (ok) return path
+        }
+        return null
     }
 }

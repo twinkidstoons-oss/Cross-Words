@@ -94,8 +94,16 @@ fun WordlyPuzzleApp(
                     viewModel.playTapSound()
                     navController.navigate(WordlyRoutes.CATEGORY_SELECT)
                 },
+                onDailyChallengeClick = {
+                    viewModel.playTapSound()
+                    val firstCategoryId = viewModel.startDailyChallenge()
+                    if (firstCategoryId != null) {
+                        navController.navigate(WordlyRoutes.game(firstCategoryId))
+                    }
+                },
                 onToggleMute = { viewModel.toggleMute() },
                 onRewardedCoinsEarned = { viewModel.grantRewardedCoins() },
+                currentTimeProvider = viewModel.currentTimeMillisProvider,
             )
         }
 
@@ -153,9 +161,14 @@ fun WordlyPuzzleApp(
                 onRewardedCoinsEarned = { viewModel.grantRewardedCoins() },
                 onShowMessage = { msg -> viewModel.showTransientMessage(msg) },
                 onRoundFinishedNavigate = {
+                    val popTarget = if (gameState?.isDailyChallenge == true) {
+                        WordlyRoutes.HOME
+                    } else {
+                        WordlyRoutes.CATEGORY_SELECT
+                    }
                     navController.navigate(WordlyRoutes.RESULTS) {
                         launchSingleTop = true
-                        popUpTo(WordlyRoutes.CATEGORY_SELECT) {
+                        popUpTo(popTarget) {
                             inclusive = false
                         }
                     }
@@ -179,6 +192,15 @@ fun WordlyPuzzleApp(
                     viewModel.startNewGame(categoryId = nextCategoryId)
                     navController.navigate(WordlyRoutes.game(nextCategoryId)) {
                         popUpTo(WordlyRoutes.CATEGORY_SELECT) { inclusive = false }
+                    }
+                },
+                onNextDailyStage = {
+                    viewModel.playTapSound()
+                    val nextCategoryId = viewModel.advanceDailyChallengeStage()
+                    if (nextCategoryId != null) {
+                        navController.navigate(WordlyRoutes.game(nextCategoryId)) {
+                            popUpTo(WordlyRoutes.HOME) { inclusive = false }
+                        }
                     }
                 },
                 onHome = {

@@ -38,9 +38,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.MonetizationOn
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -80,6 +83,9 @@ import com.example.ui.components.CoinPill
 import com.example.ui.components.MuteToggleButton
 import com.example.ui.components.WatchAdForCoinsDialog
 import com.example.ui.components.WordlyAmbientBackground
+import com.example.ui.components.formatDurationHHMMSS
+import com.example.ui.theme.OrangeSoft
+import kotlinx.coroutines.delay
 import com.example.ui.theme.FredokaFontFamily
 import com.example.ui.theme.MainText
 import com.example.ui.theme.OrangeAccent
@@ -97,8 +103,10 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     progress: PlayerProgress,
     onPlayClick: () -> Unit,
+    onDailyChallengeClick: () -> Unit = {},
     onToggleMute: () -> Unit,
     onRewardedCoinsEarned: () -> Unit,
+    currentTimeProvider: () -> Long = { System.currentTimeMillis() },
 ) {
     val totalCategories = CategoriesRepository.categories.size
     val unlockedCount = CategoriesRepository.categories.count {
@@ -110,6 +118,18 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showCoinsDialog by remember { mutableStateOf(false) }
+    var nowMs by remember(progress.dailyChallengeCompletionTimestamps) {
+        mutableStateOf(currentTimeProvider())
+    }
+    LaunchedEffect(progress.dailyChallengeCompletionTimestamps) {
+        while (true) {
+            nowMs = currentTimeProvider()
+            delay(1000L)
+        }
+    }
+    val dailyLockRemainingMs = progress.dailyChallengeRemainingLockMs(nowMs)
+    val dailyRemainingCount = progress.dailyChallengesRemainingIn24h(nowMs)
+    val isDailyAvailable = progress.isDailyChallengeAvailable(nowMs)
 
     if (showCoinsDialog) {
         WatchAdForCoinsDialog(
@@ -349,7 +369,7 @@ fun HomeScreen(
                         ) {
                             FeatureMiniChip(
                                 icon = Icons.Rounded.GridView,
-                                label = "8×8 Grid",
+                                label = "Word Grid",
                                 tint = PrimaryBlue,
                             )
                             FeatureMiniChip(
@@ -423,7 +443,130 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Daily Challenge Card (3 levels -> 500 coins, 2 per 24h, 12h cooldown)
+                Surface(
+                    onClick = {
+                        if (isDailyAvailable) {
+                            onDailyChallengeClick()
+                        } else {
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(
+                                    "Daily Challenge unlocks in ${formatDurationHHMMSS(dailyLockRemainingMs)}"
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("daily_challenge_button"),
+                    shape = RoundedCornerShape(22.dp),
+                    color = if (isDailyAvailable) SurfaceWhite else Color(0xFFF4F7FC),
+                    shadowElevation = if (isDailyAvailable) 4.dp else 1.dp,
+                    border = BorderStroke(
+                        1.3.dp,
+                        if (isDailyAvailable) OrangeAccent.copy(alpha = 0.45f) else OutlineSubtle,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(44.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isDailyAvailable) OrangeSoft else PrimaryBlueSoft,
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isDailyAvailable) {
+                                            Icons.Rounded.EmojiEvents
+                                        } else {
+                                            Icons.Rounded.Schedule
+                                        },
+                                        contentDescription = null,
+                                        tint = if (isDailyAvailable) OrangeAccent else PrimaryBlue,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Daily Challenge",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MainText,
+                                )
+                                Text(
+                                    text = if (isDailyAvailable) {
+                                        "3 levels • $dailyRemainingCount/2 left today"
+                                    } else {
+                                        "Wait 12h cooldown • $dailyRemainingCount/2 left"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 12.5.sp,
+                                    color = SecondaryText,
+                                )
+                            }
+                        }
+
+                        if (isDailyAvailable) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = OrangeSoft,
+                                border = BorderStroke(1.dp, OrangeAccent.copy(alpha = 0.40f)),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.MonetizationOn,
+                                        contentDescription = null,
+                                        tint = OrangeAccent,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "+500",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = OrangeAccent,
+                                    )
+                                }
+                            }
+                        } else {
+                            Surface(
+                                modifier = Modifier.testTag("daily_challenge_timer"),
+                                shape = RoundedCornerShape(50),
+                                color = PrimaryBlueSoft,
+                                border = BorderStroke(1.dp, PrimaryBlue.copy(alpha = 0.25f)),
+                            ) {
+                                Text(
+                                    text = formatDurationHHMMSS(dailyLockRemainingMs),
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = PrimaryBlue,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Animated Pulsing + Shimmering Play Button
                 Box(
